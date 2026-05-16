@@ -1,9 +1,11 @@
 import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiQuery } from '@nestjs/swagger';
 import { Response } from 'express';
+import { AdminMonitoringController } from '../../common/decorators';
 import { EmailService } from './email.service';
 
 @ApiTags('Admin / Email')
+@AdminMonitoringController()
 @Controller('admin/email')
 export class EmailController {
   constructor(private readonly emailService: EmailService) {}

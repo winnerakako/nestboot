@@ -28,6 +28,7 @@ import {
 } from './common/services';
 
 import { HealthModule } from './infrastructure/health/health.module';
+import { AuthModule } from './infrastructure/auth';
 import { EmailModule } from './infrastructure/email/email.module';
 import { UploadModule } from './infrastructure/upload/upload.module';
 import { CacheModule } from './infrastructure/cache/cache.module';
@@ -68,6 +69,7 @@ import { RequestLoggerInterceptor } from './infrastructure/logging/services';
     DatabaseModule,
 
     // Infrastructure Modules
+    AuthModule,
     HealthModule,
     EmailModule,
     UploadModule,

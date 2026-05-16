@@ -1,8 +1,10 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiQuery } from '@nestjs/swagger';
+import { AdminMonitoringController } from '../../common/decorators';
 import { WebSocketService } from './websocket.service';
 
 @ApiTags('Admin / WebSocket')
+@AdminMonitoringController()
 @Controller('admin/websocket')
 export class WebSocketController {
   constructor(private readonly ws: WebSocketService) {}

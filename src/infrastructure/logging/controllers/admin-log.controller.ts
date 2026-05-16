@@ -10,6 +10,10 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiQuery } from '@nestjs/swagger';
+import {
+  AdminMonitoringController,
+  AdminMonitoringWrite,
+} from '../../../common/decorators';
 import { LogConnectionService } from '../services/log-connection.service';
 import { CronService } from '../../cron/cron.service';
 
@@ -112,6 +116,7 @@ function parseOptionalString(
 }
 
 @ApiTags('Admin / Logs')
+@AdminMonitoringController()
 @Controller('admin/logs')
 export class AdminLogController {
   constructor(
@@ -507,6 +512,7 @@ export class AdminLogController {
 
   @Patch('crons/categories/:category')
   @HttpCode(HttpStatus.OK)
+  @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Enable or disable all cron jobs in a category' })
   async updateCronCategory(
     @Param('category') category: string,
@@ -532,6 +538,7 @@ export class AdminLogController {
 
   @Patch('crons/:name')
   @HttpCode(HttpStatus.OK)
+  @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Enable or disable a cron job' })
   async updateCron(@Param('name') name: string, @Body() body: unknown) {
     if (!this.conn.isConnected) return DISABLED_RESPONSE;

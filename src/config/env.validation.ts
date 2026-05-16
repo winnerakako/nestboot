@@ -16,12 +16,23 @@ export const envValidationSchema = Joi.object({
     'postgresql://postgres:postgres@localhost:5432/nestboot?schema=public',
   ),
 
-  // Auth (optional — add .required() when you implement auth)
-  JWT_SECRET: Joi.string().optional().default('change-me-in-production'),
+  // Auth
+  JWT_SECRET: Joi.when('NODE_ENV', {
+    is: 'production',
+    then: Joi.string().min(32).invalid('change-me-in-production').required(),
+    otherwise: Joi.string().optional().default('change-me-in-production'),
+  }),
   JWT_EXPIRES_IN: Joi.string().default('15m'),
-  JWT_REFRESH_SECRET: Joi.string()
-    .optional()
-    .default('change-me-refresh-in-production'),
+  JWT_REFRESH_SECRET: Joi.when('NODE_ENV', {
+    is: 'production',
+    then: Joi.string()
+      .min(32)
+      .invalid('change-me-refresh-in-production')
+      .required(),
+    otherwise: Joi.string()
+      .optional()
+      .default('change-me-refresh-in-production'),
+  }),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
   BCRYPT_ROUNDS: Joi.number().default(12),
 

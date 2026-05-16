@@ -9,9 +9,14 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiQuery } from '@nestjs/swagger';
+import {
+  AdminMonitoringController,
+  AdminMonitoringWrite,
+} from '../../common/decorators';
 import { QueueService } from './queue.service';
 
 @ApiTags('Admin / Queues')
+@AdminMonitoringController()
 @Controller('admin/queues')
 export class QueueController {
   constructor(private readonly queueService: QueueService) {}
@@ -67,6 +72,7 @@ export class QueueController {
 
   @Post(':name/jobs/:jobId/retry')
   @HttpCode(HttpStatus.OK)
+  @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Retry a specific failed job' })
   async retryJob(@Param('name') name: string, @Param('jobId') jobId: string) {
     const success = await this.queueService.retryJob(name, jobId);
@@ -76,6 +82,7 @@ export class QueueController {
 
   @Post(':name/retry-all')
   @HttpCode(HttpStatus.OK)
+  @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Retry all failed jobs in a queue' })
   async retryAllFailed(@Param('name') name: string) {
     const count = await this.queueService.retryAllFailed(name);
@@ -83,6 +90,7 @@ export class QueueController {
   }
 
   @Delete(':name/jobs/:jobId')
+  @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Remove a specific job' })
   async removeJob(@Param('name') name: string, @Param('jobId') jobId: string) {
     const success = await this.queueService.removeJob(name, jobId);
@@ -94,6 +102,7 @@ export class QueueController {
 
   @Post(':name/pause')
   @HttpCode(HttpStatus.OK)
+  @AdminMonitoringWrite()
   @ApiOperation({
     summary: 'Pause a queue (stops processing, still accepts jobs)',
   })
@@ -104,6 +113,7 @@ export class QueueController {
 
   @Post(':name/resume')
   @HttpCode(HttpStatus.OK)
+  @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Resume a paused queue' })
   async resumeQueue(@Param('name') name: string) {
     await this.queueService.resumeQueue(name);
@@ -112,6 +122,7 @@ export class QueueController {
 
   @Post(':name/drain')
   @HttpCode(HttpStatus.OK)
+  @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Drain a queue (remove all waiting jobs)' })
   async drainQueue(@Param('name') name: string) {
     await this.queueService.drainQueue(name);

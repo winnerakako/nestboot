@@ -11,9 +11,14 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiQuery } from '@nestjs/swagger';
+import {
+  AdminMonitoringController,
+  AdminMonitoringWrite,
+} from '../../common/decorators';
 import { StreamService } from './stream.service';
 
 @ApiTags('Admin / Streams')
+@AdminMonitoringController()
 @Controller('admin/streams')
 export class StreamController {
   constructor(private readonly streamService: StreamService) {}
@@ -101,6 +106,7 @@ export class StreamController {
 
   @Post(':stream/groups/:group/reset')
   @HttpCode(HttpStatus.OK)
+  @AdminMonitoringWrite()
   @ApiOperation({
     summary: 'Reset a consumer group to reprocess from a specific point',
   })
@@ -169,6 +175,7 @@ export class StreamController {
 
   @Post(':stream/trim')
   @HttpCode(HttpStatus.OK)
+  @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Trim a stream to a maximum length' })
   async trim(
     @Param('stream') stream: string,
@@ -187,6 +194,7 @@ export class StreamController {
   }
 
   @Delete(':stream')
+  @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Delete a stream entirely' })
   async deleteStream(@Param('stream') stream: string) {
     await this.streamService.deleteStream(stream);
@@ -194,6 +202,7 @@ export class StreamController {
   }
 
   @Delete(':stream/groups/:group/consumers/:consumer')
+  @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Remove a consumer from a group' })
   async deleteConsumer(
     @Param('stream') stream: string,

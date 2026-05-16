@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { AdminWriteAuditInterceptor } from '../../common/interceptors';
 import { LogConnectionService } from './services/log-connection.service';
 import { LogBufferService } from './services/log-buffer.service';
 import { AppLoggerService } from './services/app-logger.service';
@@ -17,12 +18,14 @@ import { AdminLogController } from './controllers/admin-log.controller';
     RequestLoggerInterceptor,
     QueryLoggerService,
     LogAggregationService,
+    AdminWriteAuditInterceptor,
   ],
   exports: [
     AppLoggerService,
     RequestLoggerInterceptor,
     LogConnectionService,
     LogBufferService,
+    AdminWriteAuditInterceptor,
   ],
 })
 export class LoggingModule {}
