@@ -1,0 +1,97 @@
+services:
+  app:
+    build: .
+    ports:
+      - '${PORT:-3000}:3000'
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: '3000'
+      API_PREFIX: ${API_PREFIX:-api}
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/nestboot?schema=public
+      REDIS_HOST: redis
+      MONGO_LOG_URI: mongodb://mongo:27017/nestboot_logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/${API_PREFIX:-api}/health']
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - '127.0.0.1:5432:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nestboot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '127.0.0.1:6379:6379'
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7-jammy
+    ports:
+      - '127.0.0.1:27017:27017'
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+  mongo_data:
+  uploads:
