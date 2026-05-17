@@ -7,6 +7,10 @@ export default registerAs('upload', () => ({
     process.env.ALLOWED_MIME_TYPES ||
     'image/jpeg,image/png,image/gif,image/webp,application/pdf'
   ).split(','),
+  localMaxBytes: parseInt(
+    process.env.UPLOAD_LOCAL_MAX_BYTES || '1073741824',
+    10,
+  ),
   localDestination: process.env.UPLOAD_LOCAL_DEST || './uploads',
   publicPath: process.env.UPLOAD_PUBLIC_PATH || '/uploads',
   presignedUrlExpiry: parseInt(process.env.PRESIGNED_URL_EXPIRY || '3600', 10), // 1 hour

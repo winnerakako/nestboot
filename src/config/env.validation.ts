@@ -15,6 +15,7 @@ export const envValidationSchema = Joi.object({
   DATABASE_URL: Joi.string().default(
     'postgresql://postgres:postgres@localhost:5432/nestboot?schema=public',
   ),
+  DATABASE_POOL_MAX: Joi.number().integer().min(1).max(100).default(10),
 
   // Auth
   JWT_SECRET: Joi.when('NODE_ENV', {
@@ -59,6 +60,7 @@ export const envValidationSchema = Joi.object({
   // Upload
   UPLOAD_DRIVER: Joi.string().valid('local', 's3').default('local'),
   MAX_FILE_SIZE: Joi.number().default(10485760),
+  UPLOAD_LOCAL_MAX_BYTES: Joi.number().default(1073741824),
   UPLOAD_LOCAL_DEST: Joi.string().default('./uploads'),
   UPLOAD_PUBLIC_PATH: Joi.string().default('/uploads'),
   ALLOWED_MIME_TYPES: Joi.string().default(

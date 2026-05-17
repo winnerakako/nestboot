@@ -14,6 +14,36 @@ import { BusinessException } from '../../common/filters';
 import { Readable } from 'stream';
 
 const MAX_PRESIGNED_EXPIRY_SECONDS = 7 * 24 * 60 * 60; // S3 maximum
+const MIME_EXTENSION_BY_TYPE: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'application/pdf': '.pdf',
+};
+
+const FILE_SIGNATURE_CHECKS: Record<string, (buffer: Buffer) => boolean> = {
+  'image/jpeg': (buffer) =>
+    buffer.length >= 3 &&
+    buffer[0] === 0xff &&
+    buffer[1] === 0xd8 &&
+    buffer[2] === 0xff,
+  'image/png': (buffer) =>
+    buffer.length >= 8 &&
+    buffer
+      .subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  'image/gif': (buffer) => {
+    const header = buffer.subarray(0, 6).toString('ascii');
+    return header === 'GIF87a' || header === 'GIF89a';
+  },
+  'image/webp': (buffer) =>
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WEBP',
+  'application/pdf': (buffer) =>
+    buffer.length >= 5 && buffer.subarray(0, 5).toString('ascii') === '%PDF-',
+};
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -63,6 +93,7 @@ export class UploadService implements OnModuleInit {
   private driver: 'local' | 's3';
   private maxFileSize: number;
   private allowedMimeTypes: string[];
+  private readonly localUploadLocks = new Map<string, Promise<void>>();
 
   constructor(private readonly configService: ConfigService) {
     this.driver = this.configService.get<'local' | 's3'>(
@@ -126,17 +157,17 @@ export class UploadService implements OnModuleInit {
     file: Express.Multer.File,
     options?: UploadOptions,
   ): Promise<UploadResult> {
-    this.validateFile(file, options);
+    const mimetype = this.validateFile(file, options);
 
     const folder = this.buildFolder(options?.folder, options?.subfolder);
-    const safeName = this.sanitizeFilename(file.originalname);
+    const safeName = this.buildStoredFilename(file.originalname, mimetype);
     const key = `${folder}/${randomUUID()}-${safeName}`;
 
     if (this.driver === 's3') {
-      return this.uploadToS3(file, key, folder);
+      return this.uploadToS3(file, key, folder, mimetype);
     }
 
-    return this.uploadToLocal(file, key, folder);
+    return this.uploadToLocal(file, key, folder, mimetype);
   }
 
   // ─── Multi Upload ──────────────────────────────────────
@@ -188,19 +219,19 @@ export class UploadService implements OnModuleInit {
     subfolder?: string;
     expiresIn?: number;
   }): Promise<PresignedUploadResult> {
-    this.validatePresignedUpload(params);
+    const contentType = this.validatePresignedUpload(params);
 
     const s3 = this.ensureS3Client();
     const bucket = this.configService.get<string>('upload.s3.bucket')!;
     const folder = this.buildFolder(params.folder, params.subfolder);
-    const safeName = this.sanitizeFilename(params.filename);
+    const safeName = this.buildStoredFilename(params.filename, contentType);
     const key = `${folder}/${randomUUID()}-${safeName}`;
     const expiresIn = this.resolvePresignedExpiry(params.expiresIn);
 
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: key,
-      ContentType: params.contentType,
+      ContentType: contentType,
       ContentLength: Number(params.size),
     });
 
@@ -277,6 +308,7 @@ export class UploadService implements OnModuleInit {
     file: Express.Multer.File,
     key: string,
     folder: string,
+    mimetype: string,
   ): Promise<UploadResult> {
     const s3 = this.ensureS3Client();
     const bucket = this.configService.get<string>('upload.s3.bucket')!;
@@ -286,7 +318,7 @@ export class UploadService implements OnModuleInit {
         Bucket: bucket,
         Key: key,
         Body: file.buffer,
-        ContentType: file.mimetype,
+        ContentType: mimetype,
       }),
     );
 
@@ -300,7 +332,7 @@ export class UploadService implements OnModuleInit {
       key,
       originalName: file.originalname,
       size: file.size,
-      mimetype: file.mimetype,
+      mimetype,
       folder,
       driver: 's3',
     };
@@ -367,6 +399,7 @@ export class UploadService implements OnModuleInit {
     file: Express.Multer.File,
     key: string,
     folder: string,
+    mimetype: string,
   ): Promise<UploadResult> {
     const dest = this.configService.get<string>(
       'upload.localDestination',
@@ -383,32 +416,32 @@ export class UploadService implements OnModuleInit {
       throw new BusinessException('Invalid upload folder');
     }
 
-    // Enforce local disk quota
-    await this.checkLocalDiskQuota(root, file.size);
+    return this.withLocalUploadLock(root, async () => {
+      await this.checkLocalDiskQuota(root, file.size);
+      await fs.mkdir(fullFolder, { recursive: true });
 
-    await fs.mkdir(fullFolder, { recursive: true });
+      const filename = key.split('/').pop()!;
+      const filepath = path.resolve(fullFolder, filename);
 
-    const filename = key.split('/').pop()!;
-    const filepath = path.resolve(fullFolder, filename);
+      if (!this.isWithinDirectory(filepath, root)) {
+        throw new BusinessException('Invalid upload path');
+      }
 
-    if (!this.isWithinDirectory(filepath, root)) {
-      throw new BusinessException('Invalid upload path');
-    }
+      // Stream write instead of writeFileSync — no event loop blocking
+      await this.writeFileStream(filepath, file.buffer);
 
-    // Stream write instead of writeFileSync — no event loop blocking
-    await this.writeFileStream(filepath, file.buffer);
+      this.logger.log(`Uploaded locally: ${key} (${file.size} bytes)`);
 
-    this.logger.log(`Uploaded locally: ${key} (${file.size} bytes)`);
-
-    return {
-      url: `${publicPath.replace(/\/$/, '')}/${key}`,
-      key,
-      originalName: file.originalname,
-      size: file.size,
-      mimetype: file.mimetype,
-      folder,
-      driver: 'local',
-    };
+      return {
+        url: `${publicPath.replace(/\/$/, '')}/${key}`,
+        key,
+        originalName: file.originalname,
+        size: file.size,
+        mimetype,
+        folder,
+        driver: 'local',
+      };
+    });
   }
 
   private async deleteFromLocal(key: string): Promise<void> {
@@ -445,9 +478,39 @@ export class UploadService implements OnModuleInit {
 
   // ─── Helpers ───────────────────────────────────────────
 
-  private validateFile(file: Express.Multer.File, options?: UploadOptions) {
+  private async withLocalUploadLock<T>(
+    root: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.localUploadLocks.get(root) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const next = previous.catch(() => undefined).then(() => current);
+
+    this.localUploadLocks.set(root, next);
+    await previous.catch(() => undefined);
+
+    try {
+      return await action();
+    } finally {
+      release();
+      if (this.localUploadLocks.get(root) === next) {
+        this.localUploadLocks.delete(root);
+      }
+    }
+  }
+
+  private validateFile(
+    file: Express.Multer.File,
+    options?: UploadOptions,
+  ): string {
     const maxSize = options?.maxFileSize || this.maxFileSize;
-    const allowedTypes = options?.allowedMimeTypes || this.allowedMimeTypes;
+    const allowedTypes = this.normalizeMimeTypes(
+      options?.allowedMimeTypes || this.allowedMimeTypes,
+    );
+    const mimetype = this.normalizeMimeType(file.mimetype);
 
     if (file.size > maxSize) {
       throw new BusinessException(
@@ -455,21 +518,25 @@ export class UploadService implements OnModuleInit {
       );
     }
 
-    if (allowedTypes.length > 0 && !allowedTypes.includes(file.mimetype)) {
+    if (allowedTypes.length > 0 && !allowedTypes.includes(mimetype)) {
       throw new BusinessException(
         `File type not allowed: ${file.mimetype}. Allowed: ${allowedTypes.join(', ')}`,
       );
     }
+
+    this.validateFileSignature(file.buffer, mimetype);
+    return mimetype;
   }
 
   private validatePresignedUpload(params: {
     filename: string;
     contentType: string;
     size: number;
-  }) {
-    const allowedTypes = this.allowedMimeTypes;
+  }): string {
+    const allowedTypes = this.normalizeMimeTypes(this.allowedMimeTypes);
+    const contentType = this.normalizeMimeType(params.contentType);
 
-    if (allowedTypes.length > 0 && !allowedTypes.includes(params.contentType)) {
+    if (allowedTypes.length > 0 && !allowedTypes.includes(contentType)) {
       throw new BusinessException(
         `File type not allowed: ${params.contentType}. Allowed: ${allowedTypes.join(', ')}`,
       );
@@ -485,6 +552,8 @@ export class UploadService implements OnModuleInit {
         `File too large: ${Math.round(size / 1024 / 1024)}MB exceeds ${Math.round(this.maxFileSize / 1024 / 1024)}MB limit`,
       );
     }
+
+    return contentType;
   }
 
   private resolvePresignedExpiry(expiresIn?: number): number {
@@ -509,6 +578,38 @@ export class UploadService implements OnModuleInit {
 
   private sanitizeFilename(filename: string): string {
     return path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
+  }
+
+  private buildStoredFilename(originalName: string, mimetype: string): string {
+    const base = path.basename(originalName, path.extname(originalName));
+    const safeBase =
+      base.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^[._-]+|[._-]+$/g, '') ||
+      'file';
+    const extension = MIME_EXTENSION_BY_TYPE[mimetype] || '.bin';
+    return `${safeBase}${extension}`;
+  }
+
+  private normalizeMimeType(mimetype: string): string {
+    return mimetype.trim().toLowerCase();
+  }
+
+  private normalizeMimeTypes(mimetypes: string[]): string[] {
+    return mimetypes
+      .map((type) => this.normalizeMimeType(type))
+      .filter(Boolean);
+  }
+
+  private validateFileSignature(buffer: Buffer, mimetype: string): void {
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+      throw new BusinessException('File content is required');
+    }
+
+    const signatureCheck = FILE_SIGNATURE_CHECKS[mimetype];
+    if (signatureCheck && !signatureCheck(buffer)) {
+      throw new BusinessException(
+        `File content does not match declared type: ${mimetype}`,
+      );
+    }
   }
 
   private validateKey(key: string): void {

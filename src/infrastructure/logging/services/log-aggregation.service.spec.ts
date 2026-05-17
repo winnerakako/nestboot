@@ -14,6 +14,7 @@ describe('LogAggregationService', () => {
     });
     const conn = {
       isConnected: false,
+      isConfigured: true,
       whenReady: jest.fn(() => ready),
     };
     const config = {
@@ -34,12 +35,31 @@ describe('LogAggregationService', () => {
 
     expect(intervalSpy).not.toHaveBeenCalled();
 
-    conn.isConnected = true;
     resolveReady!();
     await initPromise;
 
     expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 300000);
     service.onModuleDestroy();
+  });
+
+  it('does not start aggregation when Mongo logging is not configured', async () => {
+    const conn = {
+      isConnected: false,
+      isConfigured: false,
+      whenReady: jest.fn().mockResolvedValue(undefined),
+    };
+    const config = {
+      get: jest.fn((_key: string, fallback?: unknown) => fallback),
+    };
+    const intervalSpy = jest.spyOn(global, 'setInterval');
+    const service = new LogAggregationService(
+      conn as unknown as LogConnectionService,
+      config as unknown as ConfigService,
+    );
+
+    await service.onModuleInit();
+
+    expect(intervalSpy).not.toHaveBeenCalled();
   });
 
   it('recomputes aggregate stats instead of incrementing stale totals', async () => {
@@ -60,7 +80,7 @@ describe('LogAggregationService', () => {
             avgDuration: 150,
             minDuration: 100,
             maxDuration: 200,
-            durations: [100, 200],
+            percentiles: [100, 200, 200],
             lastStatusCode: 500,
             lastRequestAt,
           },

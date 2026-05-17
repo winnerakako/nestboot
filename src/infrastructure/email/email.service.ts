@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Handlebars from 'handlebars';
 import { promises as fs } from 'fs';
@@ -345,8 +351,20 @@ export class EmailService implements OnModuleInit {
       compiled = Handlebars.compile(source);
       this.templateCache.set(name, compiled);
       return compiled;
-    } catch {
-      throw new Error(`Email template "${name}" not found at ${templatePath}`);
+    } catch (error) {
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as NodeJS.ErrnoException).code)
+          : undefined;
+
+      if (code === 'ENOENT') {
+        throw new NotFoundException(`Email template "${name}" not found`);
+      }
+
+      this.logger.error(
+        `Failed to load email template "${name}": ${(error as Error).message}`,
+      );
+      throw new Error(`Email template "${name}" could not be loaded`);
     }
   }
 
@@ -416,14 +434,14 @@ export class EmailService implements OnModuleInit {
 
   private resolveTemplatePath(name: string): string {
     if (!/^[a-zA-Z0-9/_-]+$/.test(name)) {
-      throw new Error(`Invalid email template name "${name}"`);
+      throw new BadRequestException(`Invalid email template name "${name}"`);
     }
 
     const templatePath = path.resolve(this.templateDir, `${name}.hbs`);
     const relative = path.relative(this.templateDir, templatePath);
 
     if (relative.startsWith('..') || path.isAbsolute(relative)) {
-      throw new Error(`Invalid email template name "${name}"`);
+      throw new BadRequestException(`Invalid email template name "${name}"`);
     }
 
     return templatePath;

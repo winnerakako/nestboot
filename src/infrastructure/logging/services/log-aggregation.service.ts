@@ -5,6 +5,7 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { PipelineStage } from 'mongoose';
 import { LogConnectionService } from './log-connection.service';
 
 /**
@@ -25,7 +26,7 @@ export class LogAggregationService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     await this.conn.whenReady();
-    if (!this.conn.isConnected) return;
+    if (!this.conn.isConfigured) return;
 
     this.aggregationIntervalMs = this.configService.get<number>(
       'logging.buffer.aggregationIntervalMs',
@@ -36,8 +37,9 @@ export class LogAggregationService implements OnModuleInit, OnModuleDestroy {
       () => this.aggregate(),
       this.aggregationIntervalMs,
     );
+    const status = this.conn.isConnected ? 'active' : 'waiting for MongoDB';
     this.logger.log(
-      `Log aggregation started (interval: ${this.aggregationIntervalMs / 1000}s)`,
+      `Log aggregation started (${status}, interval: ${this.aggregationIntervalMs / 1000}s)`,
     );
   }
 
@@ -61,7 +63,7 @@ export class LogAggregationService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async aggregateRequestStats() {
-    const results = await this.conn.requestLog.aggregate([
+    const pipeline = [
       { $sort: { timestamp: 1 } },
       {
         $group: {
@@ -75,20 +77,25 @@ export class LogAggregationService implements OnModuleInit, OnModuleDestroy {
           avgDuration: { $avg: '$duration' },
           minDuration: { $min: '$duration' },
           maxDuration: { $max: '$duration' },
-          durations: { $push: '$duration' },
+          percentiles: {
+            $percentile: {
+              input: '$duration',
+              p: [0.5, 0.95, 0.99],
+              method: 'approximate',
+            },
+          },
           lastStatusCode: { $last: '$statusCode' },
           lastRequestAt: { $max: '$timestamp' },
         },
       },
-    ]);
+    ] as unknown as PipelineStage[];
+
+    const results = await this.conn.requestLog.aggregate(pipeline);
 
     for (const result of results) {
-      const sorted = (result.durations as number[]).sort((a, b) => a - b);
-      const len = sorted.length;
-
-      const p50 = sorted[Math.floor(len * 0.5)] || 0;
-      const p95 = sorted[Math.floor(len * 0.95)] || 0;
-      const p99 = sorted[Math.floor(len * 0.99)] || 0;
+      const [p50 = 0, p95 = 0, p99 = 0] = Array.isArray(result.percentiles)
+        ? (result.percentiles as number[])
+        : [];
 
       await this.conn.requestStats.updateOne(
         { routeKey: result._id },

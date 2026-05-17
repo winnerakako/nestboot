@@ -134,6 +134,20 @@ describe('IdempotencyGuard', () => {
     expect(response.json).toHaveBeenCalledWith({ ok: true });
   });
 
+  it('rejects duplicate idempotency headers instead of coercing them into one key', async () => {
+    const { guard } = createGuard();
+    const request = {
+      method: 'POST',
+      url: '/payments',
+      headers: { 'x-idempotency-key': ['a,b', 'c'] },
+    };
+    const response = createResponse();
+
+    await expect(
+      guard.canActivate(createContext(request, response)),
+    ).rejects.toThrow('x-idempotency-key header must be a single value');
+  });
+
   it('replays cached null JSON responses', async () => {
     const cacheGet = jest.fn().mockResolvedValue({
       statusCode: 204,

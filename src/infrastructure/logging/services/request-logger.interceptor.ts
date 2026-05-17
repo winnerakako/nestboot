@@ -71,7 +71,10 @@ export class RequestLoggerInterceptor implements NestInterceptor {
     }
 
     const ctx = LogContext.get();
-    const normalizedPath = normalizePath(request.route?.path || request.path);
+    const route = request.route as { path?: unknown } | undefined;
+    const routePath =
+      typeof route?.path === 'string' ? route.path : request.path;
+    const normalizedPath = normalizePath(routePath);
     const routeKey = `${request.method}:${normalizedPath}`;
 
     const dbQueries = ctx?.dbQueries || [];
@@ -109,10 +112,9 @@ export class RequestLoggerInterceptor implements NestInterceptor {
       requestQuery: Object.keys(request.query).length
         ? redact(request.query)
         : undefined,
-      requestBody:
-        request.body && Object.keys(request.body).length
-          ? redact(request.body)
-          : undefined,
+      requestBody: this.hasKeys(request.body)
+        ? redact(request.body)
+        : undefined,
       requestParams:
         request.params && Object.keys(request.params).length
           ? redact(request.params)
@@ -182,6 +184,15 @@ export class RequestLoggerInterceptor implements NestInterceptor {
     }
 
     return hints.join('; ');
+  }
+
+  private hasKeys(value: unknown): value is Record<string, unknown> {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value) &&
+      Object.keys(value).length > 0
+    );
   }
 
   private summarizeBody(body: any): string | undefined {

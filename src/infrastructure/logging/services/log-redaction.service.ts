@@ -21,6 +21,11 @@ const SENSITIVE_EXACT = new Set([
   'private',
   'creditcard',
   'cardnumber',
+  'accountnumber',
+  'bankaccount',
+  'routingnumber',
+  'sortcode',
+  'iban',
   'securitycode',
   'sessionid',
 ]);
@@ -33,6 +38,10 @@ const SENSITIVE_SUBSTRINGS = [
   'token',
   'private',
   'credential',
+  'accountnumber',
+  'cardnumber',
+  'routingnumber',
+  'bankaccount',
 ];
 
 const MAX_STRING_LENGTH = 1024;

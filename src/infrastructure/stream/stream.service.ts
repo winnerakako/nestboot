@@ -51,6 +51,8 @@ export interface ConsumerGroupSummary {
   lastDeliveredId: string;
 }
 
+type RedisStreamEntry = [string, string[]];
+
 @Injectable()
 export class StreamService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StreamService.name);
@@ -154,6 +156,8 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
     stream: string,
     messages: Record<string, any>[],
   ): Promise<string[]> {
+    if (messages.length === 0) return [];
+
     const key = this.streamKey(stream);
     const pipeline = this.client.pipeline();
 
@@ -171,15 +175,25 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
 
     const results = await pipeline.exec();
     const ids: string[] = [];
+    const errors: Error[] = [];
 
-    if (results) {
-      for (const [err, id] of results) {
-        if (err) {
-          this.logger.error(`Batch publish error: ${err.message}`);
-        } else {
-          ids.push(id as string);
-        }
+    if (!results || results.length !== messages.length) {
+      throw new BusinessException('Batch publish failed');
+    }
+
+    for (const [err, id] of results) {
+      if (err) {
+        errors.push(err);
+        this.logger.error(`Batch publish error: ${err.message}`);
+      } else {
+        ids.push(id as string);
       }
+    }
+
+    if (errors.length > 0) {
+      throw new BusinessException(
+        `Batch publish failed for ${errors.length} message(s)`,
+      );
     }
 
     this.logger.debug(`Batch published ${ids.length} messages to ${stream}`);
@@ -387,12 +401,7 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
 
       if (!results || !Array.isArray(results)) return [];
 
-      return results.map((entry: [string, string[]]) => ({
-        id: entry[0],
-        stream,
-        data: this.deserializeFields(entry[1]),
-        timestamp: new Date(parseInt(entry[0].split('-')[0], 10)),
-      }));
+      return this.parseClaimedMessages(results as RedisStreamEntry[], stream);
     } catch (error) {
       this.logger.error(
         `claimStale failed for ${stream}/${group}: ${(error as Error).message}`,
@@ -426,12 +435,7 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
 
       if (!results || !Array.isArray(results)) return [];
 
-      return results.map((entry: [string, string[]]) => ({
-        id: entry[0],
-        stream,
-        data: this.deserializeFields(entry[1]),
-        timestamp: new Date(parseInt(entry[0].split('-')[0], 10)),
-      }));
+      return this.parseClaimedMessages(results as RedisStreamEntry[], stream);
     } catch (error) {
       this.logger.error(
         `claimStaleByIds failed for ${stream}/${group}: ${(error as Error).message}`,
@@ -756,12 +760,7 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
         count.toString(),
       );
 
-      return results.map((entry) => ({
-        id: entry[0],
-        stream,
-        data: this.deserializeFields(entry[1]),
-        timestamp: new Date(parseInt(entry[0].split('-')[0], 10)),
-      }));
+      return results.map((entry) => this.deserializeDeadLetter(entry, stream));
     } catch {
       return [];
     }
@@ -841,11 +840,36 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
     return ['data', JSON.stringify(data), 'ts', Date.now().toString()];
   }
 
+  private deserializeDeadLetter(
+    entry: RedisStreamEntry,
+    fallbackStream: string,
+  ): StreamMessage {
+    const [deadLetterId, fields] = entry;
+    const map = this.fieldsToMap(fields);
+    const deadAt = map.get('deadAt');
+    const originalId = map.get('originalId') || deadLetterId;
+    const stream = map.get('stream') || fallbackStream;
+    const data = this.deserializeFields(fields);
+
+    return {
+      id: originalId,
+      stream,
+      data: {
+        payload: data,
+        originalId,
+        deadLetterId,
+        group: map.get('group'),
+        reason: map.get('reason'),
+        deadAt,
+      },
+      timestamp: deadAt
+        ? new Date(deadAt)
+        : new Date(parseInt(deadLetterId.split('-')[0], 10)),
+    };
+  }
+
   private deserializeFields(fields: string[]): any {
-    const map = new Map<string, string>();
-    for (let i = 0; i < fields.length; i += 2) {
-      map.set(fields[i], fields[i + 1]);
-    }
+    const map = this.fieldsToMap(fields);
 
     const dataStr = map.get('data');
     if (dataStr) {
@@ -861,6 +885,14 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
       obj[k] = v;
     });
     return obj;
+  }
+
+  private fieldsToMap(fields: string[]): Map<string, string> {
+    const map = new Map<string, string>();
+    for (let i = 0; i < fields.length; i += 2) {
+      map.set(fields[i], fields[i + 1]);
+    }
+    return map;
   }
 
   private parseStreamResults(
@@ -881,6 +913,18 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
     }
 
     return messages;
+  }
+
+  private parseClaimedMessages(
+    entries: RedisStreamEntry[],
+    stream: string,
+  ): StreamMessage[] {
+    return entries.map(([id, fields]) => ({
+      id,
+      stream,
+      data: this.deserializeFields(fields),
+      timestamp: new Date(parseInt(id.split('-')[0], 10)),
+    }));
   }
 
   private arrayToMap(arr: any[]): Map<string, any> {

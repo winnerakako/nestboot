@@ -8,6 +8,7 @@ import {
   BadRequestException,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiQuery } from '@nestjs/swagger';
 import {
@@ -527,6 +528,10 @@ export class AdminLogController {
       { $set: { isEnabled } },
     );
 
+    if (result.matchedCount === 0) {
+      throw new NotFoundException(`Cron category "${safeCategory}" not found`);
+    }
+
     return {
       data: {
         category: safeCategory,
@@ -562,6 +567,10 @@ export class AdminLogController {
       { $set: update },
       { new: true },
     );
+
+    if (!config) {
+      throw new NotFoundException('Cron not found');
+    }
 
     return { data: config };
   }

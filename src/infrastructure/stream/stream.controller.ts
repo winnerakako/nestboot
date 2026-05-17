@@ -113,16 +113,13 @@ export class StreamController {
   async resetConsumerGroup(
     @Param('stream') stream: string,
     @Param('group') group: string,
-    @Body() body: { fromId?: string },
+    @Body() body?: { fromId?: string },
   ) {
-    await this.streamService.resetConsumerGroup(
-      stream,
-      group,
-      body.fromId || '0',
-    );
+    const fromId = body?.fromId || '0';
+    await this.streamService.resetConsumerGroup(stream, group, fromId);
     return {
-      success: true,
-      message: `Consumer group ${group} on ${stream} reset to ${body.fromId || '0'}`,
+      data: null,
+      message: `Consumer group ${group} on ${stream} reset to ${fromId}`,
     };
   }
 
@@ -179,16 +176,16 @@ export class StreamController {
   @ApiOperation({ summary: 'Trim a stream to a maximum length' })
   async trim(
     @Param('stream') stream: string,
-    @Body() body: { maxLen: number },
+    @Body() body?: { maxLen: number },
   ) {
-    const maxLen = Number(body.maxLen);
+    const maxLen = Number(body?.maxLen);
     if (!Number.isInteger(maxLen) || maxLen < 1) {
       throw new BadRequestException('maxLen must be a positive integer');
     }
 
     const trimmed = await this.streamService.trim(stream, maxLen);
     return {
-      success: true,
+      data: { trimmed },
       message: `Trimmed ${trimmed} entries from ${stream}`,
     };
   }
@@ -198,7 +195,7 @@ export class StreamController {
   @ApiOperation({ summary: 'Delete a stream entirely' })
   async deleteStream(@Param('stream') stream: string) {
     await this.streamService.deleteStream(stream);
-    return { success: true, message: `Stream ${stream} deleted` };
+    return { data: null, message: `Stream ${stream} deleted` };
   }
 
   @Delete(':stream/groups/:group/consumers/:consumer')
@@ -215,7 +212,7 @@ export class StreamController {
       consumer,
     );
     return {
-      success: true,
+      data: { pendingReleased: pending },
       message: `Consumer ${consumer} removed from ${group} (${pending} pending messages released)`,
     };
   }

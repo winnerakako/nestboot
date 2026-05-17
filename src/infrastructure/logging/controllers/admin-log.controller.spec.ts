@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { CronService } from '../../cron/cron.service';
 import type { LogConnectionService } from '../services/log-connection.service';
 import { AdminLogController } from './admin-log.controller';
@@ -39,5 +39,39 @@ describe('AdminLogController', () => {
     await expect(controller().updateCron('sync-payments', {})).rejects.toThrow(
       'At least one of isEnabled or description is required',
     );
+  });
+
+  it('throws when updating a missing cron category', async () => {
+    const logConnection = {
+      isConnected: true,
+      cronConfig: {
+        updateMany: jest.fn().mockResolvedValue({ matchedCount: 0 }),
+      },
+    };
+    const ctrl = new AdminLogController(
+      logConnection as unknown as LogConnectionService,
+      {} as unknown as CronService,
+    );
+
+    await expect(
+      ctrl.updateCronCategory('payments', { isEnabled: false }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('throws when updating a missing cron', async () => {
+    const logConnection = {
+      isConnected: true,
+      cronConfig: {
+        findOneAndUpdate: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const ctrl = new AdminLogController(
+      logConnection as unknown as LogConnectionService,
+      {} as unknown as CronService,
+    );
+
+    await expect(
+      ctrl.updateCron('sync-payments', { isEnabled: false }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

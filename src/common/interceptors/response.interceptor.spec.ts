@@ -35,4 +35,22 @@ describe('ResponseInterceptor', () => {
       data: { id: 'event-1', data: { type: 'created' } },
     });
   });
+
+  it('only passes through complete standard response envelopes', async () => {
+    await expect(
+      run({ success: true, message: 'File deleted' }),
+    ).resolves.toEqual({
+      success: true,
+      message: 'Success',
+      data: { success: true, message: 'File deleted' },
+    });
+
+    await expect(
+      run({ success: true, message: 'Done', data: null }),
+    ).resolves.toEqual({
+      success: true,
+      message: 'Done',
+      data: null,
+    });
+  });
 });

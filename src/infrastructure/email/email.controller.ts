@@ -27,28 +27,22 @@ export class EmailController {
   })
   async preview(
     @Param('template') template: string,
-    @Query() query: Record<string, any>,
+    @Query() query: Record<string, unknown>,
     @Res() res: Response,
   ) {
     const { layout, ...context } = query;
+    const layoutName = typeof layout === 'string' ? layout : undefined;
 
     // Add default context values
     context.year = context.year || new Date().getFullYear();
     context.appName = context.appName || 'NestBoot';
 
-    try {
-      const html = await this.emailService.renderTemplate(
-        template,
-        context,
-        layout === 'null' ? null : layout,
-      );
+    const html = await this.emailService.renderTemplate(
+      template,
+      context,
+      layoutName === 'null' ? null : layoutName,
+    );
 
-      res.type('html').send(html);
-    } catch (error) {
-      res.status(404).json({
-        success: false,
-        message: (error as Error).message,
-      });
-    }
+    res.type('html').send(html);
   }
 }

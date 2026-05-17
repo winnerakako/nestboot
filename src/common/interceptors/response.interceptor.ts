@@ -25,16 +25,28 @@ export class ResponseInterceptor<T> implements NestInterceptor<
   ): Observable<StandardResponse<T>> {
     return next.handle().pipe(
       map((data) => {
-        // If the response already has our standard shape, pass through
-        if (data && typeof data === 'object' && 'success' in data) {
-          return data;
-        }
-
         if (data && typeof data === 'object') {
           const record = data as Record<string, unknown>;
           const keys = Object.keys(record);
+          const hasSuccess = Object.prototype.hasOwnProperty.call(
+            record,
+            'success',
+          );
           const hasData = Object.prototype.hasOwnProperty.call(record, 'data');
           const hasMeta = Object.prototype.hasOwnProperty.call(record, 'meta');
+          const isStandardResponse =
+            hasSuccess &&
+            hasData &&
+            typeof record.success === 'boolean' &&
+            typeof record.message === 'string' &&
+            keys.every((key) =>
+              ['success', 'message', 'data', 'meta'].includes(key),
+            );
+
+          if (isStandardResponse) {
+            return data;
+          }
+
           const isControllerEnvelope =
             (hasData || hasMeta) &&
             keys.every((key) => ['data', 'message', 'meta'].includes(key));

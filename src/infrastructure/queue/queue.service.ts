@@ -297,28 +297,37 @@ export class QueueService implements OnModuleDestroy {
     return true;
   }
 
-  async pauseQueue(name: string): Promise<void> {
+  async pauseQueue(name: string): Promise<boolean> {
     const queue = this.queues.get(name);
-    if (queue) {
-      await queue.pause();
-      this.logger.log(`Queue paused: ${name}`);
+    if (!queue) {
+      return false;
     }
+
+    await queue.pause();
+    this.logger.log(`Queue paused: ${name}`);
+    return true;
   }
 
-  async resumeQueue(name: string): Promise<void> {
+  async resumeQueue(name: string): Promise<boolean> {
     const queue = this.queues.get(name);
-    if (queue) {
-      await queue.resume();
-      this.logger.log(`Queue resumed: ${name}`);
+    if (!queue) {
+      return false;
     }
+
+    await queue.resume();
+    this.logger.log(`Queue resumed: ${name}`);
+    return true;
   }
 
-  async drainQueue(name: string): Promise<void> {
+  async drainQueue(name: string): Promise<boolean> {
     const queue = this.queues.get(name);
-    if (queue) {
-      await queue.drain();
-      this.logger.log(`Queue drained: ${name}`);
+    if (!queue) {
+      return false;
     }
+
+    await queue.drain();
+    this.logger.log(`Queue drained: ${name}`);
+    return true;
   }
 
   async onModuleDestroy() {

@@ -1,5 +1,6 @@
 import {
   Injectable,
+  HttpStatus,
   Logger,
   OnModuleInit,
   RawBodyRequest,
@@ -102,8 +103,8 @@ export class WebhookService implements OnModuleInit {
     const idempotencyKey = `webhook:${providerName}:${eventType}:${this.generateIdempotencyKey(payload, rawBody)}`;
     const processingKey = `${idempotencyKey}:processing`;
     const redis = this.cache.getClient();
-    let acquired: string | null = 'OK';
-    let idempotencyAvailable = true;
+    let acquired: string | null;
+    let releaseProcessingMarker = false;
 
     try {
       const processed = await redis.get(idempotencyKey);
@@ -122,18 +123,25 @@ export class WebhookService implements OnModuleInit {
         'NX',
       );
     } catch (error) {
-      this.logger.warn(
+      this.logger.error(
         `Webhook idempotency unavailable for ${providerName}: ${(error as Error).message}`,
       );
-      idempotencyAvailable = false;
+      throw new BusinessException(
+        'Webhook idempotency temporarily unavailable',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
 
     if (!acquired) {
-      this.logger.log(
-        `Duplicate webhook ignored: ${providerName}/${eventType}`,
+      this.logger.warn(
+        `Webhook already processing: ${providerName}/${eventType}`,
       );
-      return { received: true };
+      throw new BusinessException(
+        'Webhook is already being processed',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
+    releaseProcessingMarker = true;
 
     const event: WebhookEvent = {
       provider: providerName,
@@ -159,19 +167,22 @@ export class WebhookService implements OnModuleInit {
         payload,
       });
 
-      if (idempotencyAvailable) {
-        try {
-          await redis.set(
-            idempotencyKey,
-            '1',
-            'EX',
-            WEBHOOK_PROCESSED_TTL_SECONDS,
-          );
-        } catch (error) {
-          this.logger.warn(
-            `Webhook processed but idempotency marker was not saved for ${providerName}: ${(error as Error).message}`,
-          );
-        }
+      try {
+        await redis.set(
+          idempotencyKey,
+          '1',
+          'EX',
+          WEBHOOK_PROCESSED_TTL_SECONDS,
+        );
+      } catch (error) {
+        releaseProcessingMarker = false;
+        this.logger.error(
+          `Webhook processed but idempotency marker was not saved for ${providerName}: ${(error as Error).message}`,
+        );
+        throw new BusinessException(
+          'Webhook idempotency marker was not saved',
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
       }
 
       this.logger.log(`Webhook received: ${specificEvent}`);
@@ -183,7 +194,7 @@ export class WebhookService implements OnModuleInit {
       );
       throw error;
     } finally {
-      if (idempotencyAvailable) {
+      if (releaseProcessingMarker) {
         try {
           await redis.del(processingKey);
         } catch {

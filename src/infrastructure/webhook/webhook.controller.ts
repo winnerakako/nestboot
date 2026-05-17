@@ -10,6 +10,7 @@ import {
 import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { Request } from 'express';
 import { Public } from '../../common/decorators';
+import { SkipThrottle } from '../../common/guards';
 import { WebhookService } from './webhook.service';
 
 @ApiTags('Webhooks')
@@ -24,6 +25,7 @@ export class WebhookController {
    * Each provider's signature is verified automatically.
    */
   @Public()
+  @SkipThrottle()
   @Post(':provider')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Receive webhook from external provider' })

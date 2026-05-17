@@ -114,4 +114,73 @@ describe('StreamService', () => {
       client.xpending.mock.invocationCallOrder[0],
     );
   });
+
+  it('throws when any batched stream publish fails', async () => {
+    const exec = jest.fn().mockResolvedValue([
+      [null, '1-0'],
+      [new Error('redis write failed'), null],
+    ]);
+    const pipeline = {
+      xadd: jest.fn(),
+      exec,
+    };
+    const cache = {
+      getClient: () => ({ pipeline: () => pipeline }),
+    };
+    const service = new StreamService(cache as unknown as CacheService);
+
+    await expect(
+      service.publishBatch(
+        'payments' as never,
+        [{ id: 'a' }, { id: 'b' }] as never,
+      ),
+    ).rejects.toThrow('Batch publish failed for 1 message');
+  });
+
+  it('returns dead-letter metadata with the original stream message id', async () => {
+    const cache = {
+      getClient: () => ({
+        xrevrange: jest
+          .fn()
+          .mockResolvedValue([
+            [
+              '2000-0',
+              [
+                'data',
+                JSON.stringify({ amount: 100 }),
+                'originalId',
+                '1000-0',
+                'stream',
+                'payments',
+                'group',
+                'ledger',
+                'reason',
+                'boom',
+                'deadAt',
+                '2026-01-01T00:00:00.000Z',
+              ],
+            ],
+          ]),
+      }),
+    };
+    const service = new StreamService(cache as unknown as CacheService);
+
+    await expect(service.getDeadLetters('payments', 'ledger')).resolves.toEqual(
+      [
+        {
+          id: '1000-0',
+          stream: 'payments',
+          data: {
+            payload: { amount: 100 },
+            originalId: '1000-0',
+            deadLetterId: '2000-0',
+            group: 'ledger',
+            reason: 'boom',
+            deadAt: '2026-01-01T00:00:00.000Z',
+          },
+          timestamp: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      ],
+    );
+  });
 });

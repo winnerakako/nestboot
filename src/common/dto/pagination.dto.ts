@@ -18,10 +18,10 @@ export class PaginationDto {
   @Max(100)
   limit: number = 20;
 
-  @ApiPropertyOptional({ description: 'Sort field' })
+  @ApiPropertyOptional({ description: 'Sort field', default: 'id' })
   @IsOptional()
   @IsString()
-  sortBy?: string = 'createdAt';
+  sortBy?: string = 'id';
 
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
   @IsOptional()

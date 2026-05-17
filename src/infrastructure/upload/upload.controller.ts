@@ -9,17 +9,25 @@ import {
   UploadedFile,
   UploadedFiles,
   UseInterceptors,
+  UseGuards,
   ParseFilePipe,
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiBody,
+  ApiBearerAuth,
   ApiConsumes,
   ApiOperation,
   ApiTags,
   ApiQuery,
 } from '@nestjs/swagger';
+import {
+  ADMIN_MONITORING_READ_ROLES,
+  ADMIN_MONITORING_WRITE_ROLES,
+  Roles,
+} from '../../common/decorators';
+import { RolesGuard } from '../../common/guards';
 import { UploadService } from './upload.service';
 
 @ApiTags('Upload')
@@ -104,6 +112,9 @@ export class UploadController {
   // ─── Presigned Download URL ────────────────────────────
 
   @Get('signed-url/*key')
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles(...ADMIN_MONITORING_READ_ROLES)
   @ApiOperation({
     summary: 'Get a presigned download URL for a private S3 file',
   })
@@ -127,10 +138,13 @@ export class UploadController {
   // ─── Delete ────────────────────────────────────────────
 
   @Delete('*key')
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles(...ADMIN_MONITORING_WRITE_ROLES)
   @ApiOperation({ summary: 'Delete an uploaded file' })
   async delete(@Param('key') key: string | string[]) {
     await this.uploadService.deleteFile(this.normalizeWildcardParam(key));
-    return { success: true, message: 'File deleted' };
+    return { data: null, message: 'File deleted' };
   }
 
   private normalizeWildcardParam(value: string | string[]): string {

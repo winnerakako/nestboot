@@ -40,6 +40,8 @@ export interface BaseCrudOptions {
   defaultInclude?: Record<string, any> | null;
   /** Fields callers are allowed to sort by */
   allowedSortFields?: string[];
+  /** Default field used when callers omit sortBy */
+  defaultSortField?: string | null;
 }
 
 export abstract class BaseCrudService<ModelName extends string> {
@@ -53,7 +55,7 @@ export abstract class BaseCrudService<ModelName extends string> {
     return (this.prisma as any)[this.modelName];
   }
 
-  async findAll(
+  async findAll<T = any>(
     pagination: PaginationDto,
     extra?: {
       where?: Record<string, any>;
@@ -62,7 +64,7 @@ export abstract class BaseCrudService<ModelName extends string> {
       include?: Record<string, any>;
       orderBy?: Record<string, 'asc' | 'desc'>;
     },
-  ): Promise<PaginatedResponse<any>> {
+  ): Promise<PaginatedResponse<T>> {
     let where: Record<string, any> = { ...extra?.where };
 
     // Soft delete filter — always enforced, cannot be overridden by callers
@@ -92,8 +94,9 @@ export abstract class BaseCrudService<ModelName extends string> {
     const orderBy =
       extra?.orderBy ??
       ({
-        [this.validateSortField(pagination.sortBy || 'createdAt')]:
-          this.validateSortOrder(pagination.sortOrder || 'desc'),
+        [this.validateSortField(
+          pagination.sortBy || this.options.defaultSortField || 'id',
+        )]: this.validateSortOrder(pagination.sortOrder || 'desc'),
       } as Record<string, 'asc' | 'desc'>);
 
     const [data, total] = await Promise.all([
@@ -223,8 +226,7 @@ export abstract class BaseCrudService<ModelName extends string> {
   private validateSortField(field: string): string {
     const allowed = new Set([
       'id',
-      'createdAt',
-      'updatedAt',
+      ...(this.options.defaultSortField ? [this.options.defaultSortField] : []),
       ...(this.options.searchFields || []),
       ...Object.keys(this.options.defaultSelect || {}),
       ...(this.options.allowedSortFields || []),

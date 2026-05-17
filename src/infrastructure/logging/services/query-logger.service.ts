@@ -72,9 +72,11 @@ export class QueryLoggerService implements OnModuleInit {
     );
   }
 
-  private handleQueryEvent(event: any) {
-    const duration = event.duration ?? 0;
-    const query = event.query ?? '';
+  private handleQueryEvent(event: unknown) {
+    const queryEvent = event as { duration?: unknown; query?: unknown };
+    const duration =
+      typeof queryEvent.duration === 'number' ? queryEvent.duration : 0;
+    const query = typeof queryEvent.query === 'string' ? queryEvent.query : '';
     const { model, operation } = this.parseQuery(query);
 
     this.processQuery(model, operation, duration, query);

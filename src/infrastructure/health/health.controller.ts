@@ -9,6 +9,7 @@ import {
   DiskHealthIndicator,
 } from '@nestjs/terminus';
 import { Public } from '../../common/decorators';
+import { SkipThrottle } from '../../common/guards';
 import { PrismaService } from '../../database';
 import { RedisHealthIndicator } from './indicators/redis.health';
 import { MongoHealthIndicator } from './indicators/mongo.health';
@@ -45,6 +46,7 @@ export class HealthController {
    * Public (no auth) so infrastructure can call it.
    */
   @Public()
+  @SkipThrottle()
   @Get()
   @HealthCheck()
   @ApiOperation({
@@ -71,6 +73,7 @@ export class HealthController {
    * Use for K8s livenessProbe (fast, no external deps).
    */
   @Public()
+  @SkipThrottle()
   @Get('live')
   @ApiOperation({ summary: 'Liveness probe (is the process alive?)' })
   live() {
@@ -82,6 +85,7 @@ export class HealthController {
    * Use for K8s readinessProbe (checks DB + Redis).
    */
   @Public()
+  @SkipThrottle()
   @Get('ready')
   @HealthCheck()
   @ApiOperation({ summary: 'Readiness probe (can the app serve traffic?)' })

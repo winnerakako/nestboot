@@ -15,11 +15,26 @@ import { Server, Socket } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
 import { RedisService } from '../cache/redis.service';
+import {
+  getJwtOrgId,
+  getJwtSubject,
+  RawJwtPayload,
+  resolveJwtRole,
+} from '../auth/jwt-payload.util';
 
 const MAX_CONNECTIONS_PER_USER = 5;
 const RATE_LIMIT_WINDOW_MS = 10000; // 10 seconds
 const RATE_LIMIT_MAX_MESSAGES = 50; // 50 messages per 10 seconds
 const MAX_CUSTOM_ROOMS_PER_USER = 20;
+const CONNECTION_LOCK_TTL_MS = 10000;
+const CONNECTION_LOCK_RETRY_ATTEMPTS = 100;
+const CONNECTION_LOCK_RETRY_DELAY_MS = 50;
+const RELEASE_CONNECTION_LOCK_SCRIPT = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("del", KEYS[1])
+end
+return 0
+`;
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -29,7 +44,7 @@ interface AuthenticatedSocket extends Socket {
 
 interface AuthenticatedJwtPayload {
   sub: string;
-  role?: string;
+  role: string;
   orgId?: string;
 }
 
@@ -57,6 +72,7 @@ export class AppGateway
 
   /** socketId → message timestamps for rate limiting */
   private readonly rateLimitMap = new Map<string, number[]>();
+  private readonly connectionLocks = new Map<string, Promise<void>>();
   private pubClient?: Redis;
   private subClient?: Redis;
 
@@ -96,10 +112,14 @@ export class AppGateway
     }
 
     try {
-      const secret: string = this.configService.get<string>('auth.jwtSecret')!;
-      const payload = this.jwtService.verify<AuthenticatedJwtPayload>(token, {
+      const secret = this.configService.get<string>(
+        'auth.jwtSecret',
+        'change-me-in-production',
+      );
+      const rawPayload = this.jwtService.verify<RawJwtPayload>(token, {
         secret,
       });
+      const payload = this.normalizeJwtPayload(rawPayload);
 
       client.userId = payload.sub;
       client.userRole = payload.role;
@@ -113,32 +133,52 @@ export class AppGateway
       return;
     }
 
-    // Enforce max connections per user
+    // Enforce and register under a per-user lock so concurrent connects cannot
+    // race past the connection cap.
     const userId = client.userId!;
-    const existingConnectionCount = await this.getUserConnectionCount(userId);
+    let registered: boolean;
+    try {
+      registered = await this.withUserConnectionLock(userId, async () => {
+        const existingConnectionCount =
+          await this.getUserConnectionCount(userId);
 
-    if (existingConnectionCount >= MAX_CONNECTIONS_PER_USER) {
+        if (existingConnectionCount >= MAX_CONNECTIONS_PER_USER) {
+          client.emit('error:max-connections', {
+            message: `Maximum ${MAX_CONNECTIONS_PER_USER} connections per user`,
+            max: MAX_CONNECTIONS_PER_USER,
+          });
+          client.disconnect();
+          return false;
+        }
+
+        // Auto-join rooms based on user identity before publishing local state.
+        await client.join(`user:${userId}`);
+        await client.join(`role:${client.userRole!}`);
+        if (client.userOrgId) await client.join(`org:${client.userOrgId}`);
+
+        // Register socket
+        const existing = this.userSockets.get(userId) || new Set();
+        existing.add(client.id);
+        this.userSockets.set(userId, existing);
+
+        this.logger.debug(
+          `Connected: ${client.id} (user: ${userId}, connections: ${existingConnectionCount + 1})`,
+        );
+        return true;
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Connection limit check failed for user ${userId}: ${(error as Error).message}`,
+      );
       client.emit('error:max-connections', {
-        message: `Maximum ${MAX_CONNECTIONS_PER_USER} connections per user`,
+        message: 'Unable to verify connection limit. Please retry.',
         max: MAX_CONNECTIONS_PER_USER,
       });
       client.disconnect();
       return;
     }
 
-    // Register socket
-    const existing = this.userSockets.get(userId) || new Set();
-    existing.add(client.id);
-    this.userSockets.set(userId, existing);
-
-    // Auto-join rooms based on user identity
-    await client.join(`user:${userId}`);
-    if (client.userRole) await client.join(`role:${client.userRole}`);
-    if (client.userOrgId) await client.join(`org:${client.userOrgId}`);
-
-    this.logger.debug(
-      `Connected: ${client.id} (user: ${userId}, connections: ${existingConnectionCount + 1})`,
-    );
+    if (!registered) return;
   }
 
   handleDisconnect(client: AuthenticatedSocket) {
@@ -317,6 +357,113 @@ export class AppGateway
     if (sockets) return sockets.length;
 
     return this.userSockets.get(userId)?.size || 0;
+  }
+
+  isRedisAdapterHealthy(): boolean {
+    if (!this.server) return false;
+    if (!this.pubClient && !this.subClient) return true;
+
+    return (
+      this.pubClient?.status === 'ready' && this.subClient?.status === 'ready'
+    );
+  }
+
+  private normalizeJwtPayload(payload: RawJwtPayload): AuthenticatedJwtPayload {
+    const subject = getJwtSubject(payload);
+    const role = resolveJwtRole(payload);
+
+    if (!subject || !role) {
+      throw new Error('Invalid token payload');
+    }
+
+    return {
+      sub: subject,
+      role,
+      orgId: getJwtOrgId(payload),
+    };
+  }
+
+  private async withUserConnectionLock<T>(
+    userId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.withLocalUserConnectionLock(userId, () =>
+      this.withDistributedUserConnectionLock(userId, operation),
+    );
+  }
+
+  private async withLocalUserConnectionLock<T>(
+    userId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.connectionLocks.get(userId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chained = previous.catch(() => undefined).then(() => current);
+    this.connectionLocks.set(userId, chained);
+
+    await previous.catch(() => undefined);
+
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.connectionLocks.get(userId) === chained) {
+        this.connectionLocks.delete(userId);
+      }
+    }
+  }
+
+  private async withDistributedUserConnectionLock<T>(
+    userId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.pubClient && !this.subClient) {
+      return operation();
+    }
+
+    const client = this.redisService.getClient();
+    const lockKey = `ws:connection-lock:${userId}`;
+    const lockToken = `${process.pid}:${client.options.connectionName ?? 'ws'}:${Date.now()}:${Math.random()}`;
+
+    for (let attempt = 0; attempt < CONNECTION_LOCK_RETRY_ATTEMPTS; attempt++) {
+      const acquired = await client.set(
+        lockKey,
+        lockToken,
+        'PX',
+        CONNECTION_LOCK_TTL_MS,
+        'NX',
+      );
+
+      if (acquired === 'OK') {
+        try {
+          return await operation();
+        } finally {
+          try {
+            await client.eval(
+              RELEASE_CONNECTION_LOCK_SCRIPT,
+              1,
+              lockKey,
+              lockToken,
+            );
+          } catch (error) {
+            this.logger.warn(
+              `Failed to release WebSocket connection lock: ${(error as Error).message}`,
+            );
+          }
+        }
+      }
+
+      await this.sleep(CONNECTION_LOCK_RETRY_DELAY_MS);
+    }
+
+    throw new Error('Timed out waiting for distributed connection lock');
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async tryFetchSockets(room?: string): Promise<any[] | null> {

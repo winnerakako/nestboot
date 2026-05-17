@@ -1,7 +1,7 @@
-import { Controller, Get, Header } from '@nestjs/common';
+import { Controller, Get, Header, UseGuards } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { Public } from '../../common/decorators';
-import { SkipThrottle } from '../../common/guards';
+import { ADMIN_MONITORING_READ_ROLES, Roles } from '../../common/decorators';
+import { RolesGuard } from '../../common/guards';
 import { MetricsService } from './metrics.service';
 
 @ApiExcludeController()
@@ -11,11 +11,11 @@ export class MetricsController {
 
   /**
    * Expose collected metrics in Prometheus text format.
-   * Public endpoint (no auth) so infrastructure scrapers can access it.
-   * Excluded from rate limiting and Swagger.
+   * Requires an admin/ops JWT unless this route is protected at the network layer
+   * by an environment-specific override.
    */
-  @Public()
-  @SkipThrottle()
+  @UseGuards(RolesGuard)
+  @Roles(...ADMIN_MONITORING_READ_ROLES)
   @Get()
   @Header('Content-Type', 'text/plain; charset=utf-8')
   getMetrics(): string {

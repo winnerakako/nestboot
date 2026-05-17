@@ -105,7 +105,7 @@ export class LogBufferService implements OnModuleDestroy {
     const entries = [...this.buffer];
     this.buffer = [];
 
-    let hadFailure = false;
+    const failedEntries: BufferEntry[] = [];
 
     try {
       const grouped = new Map<string, any[]>();
@@ -122,14 +122,21 @@ export class LogBufferService implements OnModuleDestroy {
             await model.insertMany(docs, { ordered: false });
           }
         } catch (error) {
-          hadFailure = true;
+          failedEntries.push(
+            ...docs.map((data) => ({
+              model: modelName,
+              data,
+              immediate: false,
+            })),
+          );
           this.logger.error(
             `Failed to flush ${docs.length} ${modelName} logs: ${(error as Error).message}`,
           );
         }
       }
 
-      if (hadFailure) {
+      if (failedEntries.length > 0) {
+        this.buffer.unshift(...failedEntries);
         this.consecutiveFailures++;
         this.lastFailureTime = Date.now();
       } else {

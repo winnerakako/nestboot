@@ -25,6 +25,25 @@ describe('BaseCrudService', () => {
     expect(prisma.post.findMany).not.toHaveBeenCalled();
   });
 
+  it('defaults list sorting to id so models without timestamps do not crash', async () => {
+    const prisma = {
+      post: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    const service = new TestCrudService(
+      prisma as unknown as PrismaService,
+      'post',
+    );
+
+    await service.findAll(new PaginationDto());
+
+    expect(prisma.post.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { id: 'desc' } }),
+    );
+  });
+
   it('preserves caller OR filters when applying search filters', async () => {
     const prisma = {
       post: {

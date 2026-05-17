@@ -6,6 +6,29 @@ import { QueueService } from '../queue/queue.service';
 import { AppLoggerService } from '../logging/services/app-logger.service';
 import { EventService } from '../events/event.service';
 import { EmailService } from './email.service';
+import {
+  EmailAttachment,
+  EmailProviderOptions,
+} from './providers/email-provider.interface';
+
+type QueuedEmailAttachment = EmailAttachment & { _isBase64?: boolean };
+
+interface SendEmailJobData {
+  providerOptions: EmailProviderOptions & {
+    attachments?: QueuedEmailAttachment[];
+  };
+}
+
+interface SendTemplateEmailJobData {
+  to: string;
+  subject: string;
+  template: string;
+  context?: Record<string, any>;
+  layout?: string | null;
+  from?: string;
+  attachments?: QueuedEmailAttachment[];
+  attachmentCacheKey?: string;
+}
 
 @Injectable()
 export class EmailWorker extends BaseWorker implements OnModuleInit {
@@ -30,45 +53,34 @@ export class EmailWorker extends BaseWorker implements OnModuleInit {
    * Handle pre-rendered emails (from send()).
    * Restores Buffer attachments from base64.
    */
-  private async handleSend(job: Job<{ providerOptions: any }>) {
-    const options = job.data.providerOptions;
+  private async handleSend(job: Job) {
+    const { providerOptions } = job.data as SendEmailJobData;
 
     // Restore Buffer attachments from base64
-    if (options.attachments) {
-      options.attachments = await this.emailService.restoreQueuedAttachments(
-        options.attachments,
-      );
-    }
+    const attachments = await this.emailService.restoreQueuedAttachments(
+      providerOptions.attachments,
+    );
 
-    await this.emailService.executeEmail(options);
+    await this.emailService.executeEmail({ ...providerOptions, attachments });
   }
 
   /**
    * Handle template-based emails (from sendBulk()).
    * Renders template in the worker to avoid memory buildup in the caller.
    */
-  private async handleSendTemplate(
-    job: Job<{
-      to: string;
-      subject: string;
-      template: string;
-      context?: Record<string, any>;
-      layout?: string | null;
-      from?: string;
-      attachments?: any[];
-      attachmentCacheKey?: string;
-    }>,
-  ) {
+  private async handleSendTemplate(job: Job) {
+    const data = job.data as SendTemplateEmailJobData;
+
     await this.emailService.sendNow({
-      to: job.data.to,
-      subject: job.data.subject,
-      template: job.data.template,
-      context: job.data.context,
-      layout: job.data.layout,
-      from: job.data.from,
+      to: data.to,
+      subject: data.subject,
+      template: data.template,
+      context: data.context,
+      layout: data.layout,
+      from: data.from,
       attachments: await this.emailService.restoreQueuedAttachments(
-        job.data.attachments,
-        job.data.attachmentCacheKey,
+        data.attachments,
+        data.attachmentCacheKey,
       ),
     });
   }

@@ -3,25 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { JwtPayload } from '../../common/interfaces';
-
-interface RawJwtPayload {
-  sub?: unknown;
-  email?: unknown;
-  role?: unknown;
-  roles?: unknown;
-}
-
-function resolveRole(payload: RawJwtPayload): string | undefined {
-  if (typeof payload.role === 'string') {
-    return payload.role;
-  }
-
-  if (Array.isArray(payload.roles) && typeof payload.roles[0] === 'string') {
-    return payload.roles[0];
-  }
-
-  return undefined;
-}
+import {
+  getJwtEmail,
+  getJwtSubject,
+  RawJwtPayload,
+  resolveJwtRole,
+} from './jwt-payload.util';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
@@ -37,18 +24,19 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   validate(payload: RawJwtPayload): JwtPayload {
-    if (typeof payload.sub !== 'string') {
+    const subject = getJwtSubject(payload);
+    if (!subject) {
       throw new UnauthorizedException('Invalid token subject');
     }
 
-    const role = resolveRole(payload);
+    const role = resolveJwtRole(payload);
     if (!role) {
       throw new UnauthorizedException('Invalid token role');
     }
 
     return {
-      sub: payload.sub,
-      email: typeof payload.email === 'string' ? payload.email : '',
+      sub: subject,
+      email: getJwtEmail(payload),
       role,
     };
   }

@@ -3,7 +3,9 @@ import { CacheService } from './cache.service';
 /**
  * Cache key builder type — receives method arguments, returns cache key.
  */
-type CacheKeyBuilder = (...args: any[]) => string;
+type CacheKeyBuilder<Args extends unknown[] = any[]> = (
+  ...args: Args
+) => string;
 
 /**
  * Decorator that caches a method's return value in Redis.
@@ -27,9 +29,9 @@ type CacheKeyBuilder = (...args: any[]) => string;
  *   - Method must return a Promise
  *   - Return value must be JSON-serializable
  */
-export function Cacheable(
-  _namespace: string,
-  keyBuilder: CacheKeyBuilder,
+export function Cacheable<Args extends unknown[] = any[]>(
+  namespace: string,
+  keyBuilder: CacheKeyBuilder<Args>,
   ttlSeconds = 300,
 ): MethodDecorator {
   return function (
@@ -39,7 +41,7 @@ export function Cacheable(
   ) {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function (...args: Args) {
       const cache: CacheService | undefined = (this as any).cacheService;
 
       if (!cache) {
@@ -47,7 +49,7 @@ export function Cacheable(
         return originalMethod.apply(this, args);
       }
 
-      const key = keyBuilder(...args);
+      const key = buildNamespacedKey(namespace, keyBuilder(...args));
 
       try {
         const cached = await cache.get(key);
@@ -71,6 +73,13 @@ export function Cacheable(
   };
 }
 
+function buildNamespacedKey(namespace: string, key: string): string {
+  if (!namespace) return key;
+  return key === namespace || key.startsWith(`${namespace}:`)
+    ? key
+    : `${namespace}:${key}`;
+}
+
 /**
  * Decorator that invalidates cache keys when a method is called.
  * Use on mutation methods (create, update, delete).
@@ -81,8 +90,8 @@ export function Cacheable(
  *     return this.prisma.user.update({ where: { id }, data });
  *   }
  */
-export function CacheInvalidate(
-  keysBuilder: (...args: any[]) => string[],
+export function CacheInvalidate<Args extends unknown[] = any[]>(
+  keysBuilder: (...args: Args) => string[],
 ): MethodDecorator {
   return function (
     _target: any,
@@ -91,7 +100,7 @@ export function CacheInvalidate(
   ) {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function (...args: Args) {
       const result = await originalMethod.apply(this, args);
 
       const cache: CacheService | undefined = (this as any).cacheService;

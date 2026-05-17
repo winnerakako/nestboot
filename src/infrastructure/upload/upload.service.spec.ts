@@ -25,6 +25,20 @@ describe('UploadService', () => {
     return new UploadService(config as unknown as ConfigService);
   }
 
+  function pngFile(overrides: Partial<Express.Multer.File> = {}) {
+    const buffer = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+
+    return {
+      originalname: 'image.png',
+      mimetype: 'image/png',
+      size: buffer.length,
+      buffer,
+      ...overrides,
+    } as Express.Multer.File;
+  }
+
   it('rejects empty multi-upload requests', async () => {
     await expect(createService().uploadFiles([])).rejects.toThrow(
       'At least one file is required',
@@ -49,6 +63,36 @@ describe('UploadService', () => {
         size: 2048,
       }),
     ).rejects.toThrow('File too large');
+  });
+
+  it('rejects uploaded content that does not match the declared MIME type', async () => {
+    await expect(
+      createService({ 'upload.driver': 'local' }).uploadFile(
+        pngFile({
+          originalname: 'evil.html',
+          buffer: Buffer.from('<script>alert(1)</script>'),
+          size: 25,
+        }),
+      ),
+    ).rejects.toThrow('File content does not match declared type');
+  });
+
+  it('uses a canonical extension for presigned upload keys', async () => {
+    const service = createService({
+      'upload.s3.accessKeyId': 'test-access-key',
+      'upload.s3.secretAccessKey': 'test-secret-key',
+      'upload.s3.bucket': 'test-bucket',
+      'upload.s3.region': 'us-east-1',
+    });
+    service.onModuleInit();
+
+    const result = await service.getPresignedUploadUrl({
+      filename: 'avatar.html',
+      contentType: 'image/png',
+      size: 100,
+    });
+
+    expect(result.key).toMatch(/\/[0-9a-f-]+-avatar\.png$/);
   });
 
   it('ignores missing local files when deleting', async () => {
@@ -97,5 +141,54 @@ describe('UploadService', () => {
     await expect(
       createService({ 'upload.driver': 'local' }).deleteFile('uploads/a.png'),
     ).rejects.toThrow('Failed to delete file');
+  });
+
+  it('serializes local quota checks with writes', async () => {
+    const service = createService({
+      'upload.driver': 'local',
+      'upload.localMaxBytes': 10,
+    });
+    const size = 8;
+    const file = pngFile({ size });
+    let finishFirstWrite!: () => void;
+
+    jest.spyOn(fs, 'mkdir').mockResolvedValue(undefined);
+    const sizeSpy = jest
+      .spyOn(service as any, 'getDirectorySize')
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(size);
+    const writeSpy = jest
+      .spyOn(service as any, 'writeFileStream')
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishFirstWrite = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+
+    const first = service.uploadFile(file);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const second = service.uploadFile(file);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(sizeSpy).toHaveBeenCalledTimes(1);
+
+    finishFirstWrite();
+    const [firstResult, secondResult] = await Promise.allSettled([
+      first,
+      second,
+    ]);
+
+    expect(firstResult.status).toBe('fulfilled');
+    expect(secondResult.status).toBe('rejected');
+    if (secondResult.status === 'rejected') {
+      expect((secondResult.reason as Error).message).toContain(
+        'Upload storage quota exceeded',
+      );
+    }
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    expect(sizeSpy).toHaveBeenCalledTimes(2);
   });
 });

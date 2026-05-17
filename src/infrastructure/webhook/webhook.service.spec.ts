@@ -123,4 +123,125 @@ describe('WebhookService', () => {
       'webhook:paystack:charge.success:same-reference:processing',
     );
   });
+
+  it('fails closed before processing when webhook idempotency is unavailable', async () => {
+    const redisGet = jest.fn().mockRejectedValue(new Error('redis down'));
+    const emitDynamicStrict = jest.fn().mockResolvedValue(undefined);
+    const service = new WebhookService(
+      { get: jest.fn() } as unknown as ConfigService,
+      {
+        emitStrict: jest.fn().mockResolvedValue(undefined),
+        emitDynamicStrict,
+      } as unknown as EventService,
+      {
+        getClient: () => ({
+          get: redisGet,
+          set: jest.fn(),
+          del: jest.fn(),
+        }),
+      } as unknown as CacheService,
+    );
+
+    service.registerProvider({
+      name: 'paystack',
+      secret: 'secret',
+      signatureHeader: 'x-paystack-signature',
+    });
+
+    const body = { event: 'charge.success', reference: 'same-reference' };
+    const rawBody = JSON.stringify(body);
+
+    await expect(
+      service.handleWebhook('paystack', {
+        rawBody: Buffer.from(rawBody),
+        body,
+        headers: {
+          'x-paystack-signature': sign(rawBody, 'secret'),
+        },
+      } as unknown as RawBodyRequest<Request>),
+    ).rejects.toThrow('Webhook idempotency temporarily unavailable');
+
+    expect(emitDynamicStrict).not.toHaveBeenCalled();
+  });
+
+  it('does not acknowledge a duplicate delivery while the first is still processing', async () => {
+    const redisGet = jest.fn().mockResolvedValue(null);
+    const redisSet = jest.fn().mockResolvedValue(null);
+    const emitDynamicStrict = jest.fn().mockResolvedValue(undefined);
+    const service = new WebhookService(
+      { get: jest.fn() } as unknown as ConfigService,
+      {
+        emitStrict: jest.fn().mockResolvedValue(undefined),
+        emitDynamicStrict,
+      } as unknown as EventService,
+      {
+        getClient: () => ({
+          get: redisGet,
+          set: redisSet,
+          del: jest.fn(),
+        }),
+      } as unknown as CacheService,
+    );
+
+    service.registerProvider({
+      name: 'paystack',
+      secret: 'secret',
+      signatureHeader: 'x-paystack-signature',
+    });
+
+    const body = { event: 'charge.success', reference: 'same-reference' };
+    const rawBody = JSON.stringify(body);
+
+    await expect(
+      service.handleWebhook('paystack', {
+        rawBody: Buffer.from(rawBody),
+        body,
+        headers: {
+          'x-paystack-signature': sign(rawBody, 'secret'),
+        },
+      } as unknown as RawBodyRequest<Request>),
+    ).rejects.toThrow('Webhook is already being processed');
+
+    expect(emitDynamicStrict).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the processed idempotency marker cannot be saved', async () => {
+    const redisGet = jest.fn().mockResolvedValue(null);
+    const redisSet = jest
+      .fn()
+      .mockResolvedValueOnce('OK')
+      .mockRejectedValueOnce(new Error('redis down'));
+    const redisDel = jest.fn();
+    const service = new WebhookService(
+      { get: jest.fn() } as unknown as ConfigService,
+      {
+        emitStrict: jest.fn().mockResolvedValue(undefined),
+        emitDynamicStrict: jest.fn().mockResolvedValue(undefined),
+      } as unknown as EventService,
+      {
+        getClient: () => ({ get: redisGet, set: redisSet, del: redisDel }),
+      } as unknown as CacheService,
+    );
+
+    service.registerProvider({
+      name: 'paystack',
+      secret: 'secret',
+      signatureHeader: 'x-paystack-signature',
+    });
+
+    const body = { event: 'charge.success', reference: 'same-reference' };
+    const rawBody = JSON.stringify(body);
+
+    await expect(
+      service.handleWebhook('paystack', {
+        rawBody: Buffer.from(rawBody),
+        body,
+        headers: {
+          'x-paystack-signature': sign(rawBody, 'secret'),
+        },
+      } as unknown as RawBodyRequest<Request>),
+    ).rejects.toThrow('Webhook idempotency marker was not saved');
+
+    expect(redisDel).not.toHaveBeenCalled();
+  });
 });

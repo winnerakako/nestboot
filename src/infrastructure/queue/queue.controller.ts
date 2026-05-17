@@ -7,6 +7,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiQuery } from '@nestjs/swagger';
 import {
@@ -60,9 +61,9 @@ export class QueueController {
     @Query('end') end?: string,
   ) {
     const s = Math.max(0, parseInt(start, 10) || 0);
-    const parsedEnd = end === undefined ? s + 20 : parseInt(end, 10);
-    const requestedEnd = Number.isFinite(parsedEnd) ? parsedEnd : s + 20;
-    const e = Math.max(s, Math.min(s + 100, requestedEnd));
+    const parsedEnd = end === undefined ? s + 19 : parseInt(end, 10);
+    const requestedEnd = Number.isFinite(parsedEnd) ? parsedEnd : s + 19;
+    const e = Math.max(s, Math.min(s + 99, requestedEnd));
 
     const jobs = await this.queueService.getFailedJobs(name, s, e);
     return { data: jobs, meta: { start: s, end: e, count: jobs.length } };
@@ -76,8 +77,8 @@ export class QueueController {
   @ApiOperation({ summary: 'Retry a specific failed job' })
   async retryJob(@Param('name') name: string, @Param('jobId') jobId: string) {
     const success = await this.queueService.retryJob(name, jobId);
-    if (!success) return { success: false, message: 'Job not found' };
-    return { success: true, message: `Job ${jobId} queued for retry` };
+    if (!success) throw new NotFoundException('Job not found');
+    return { data: null, message: `Job ${jobId} queued for retry` };
   }
 
   @Post(':name/retry-all')
@@ -86,7 +87,10 @@ export class QueueController {
   @ApiOperation({ summary: 'Retry all failed jobs in a queue' })
   async retryAllFailed(@Param('name') name: string) {
     const count = await this.queueService.retryAllFailed(name);
-    return { success: true, message: `${count} jobs queued for retry` };
+    return {
+      data: { retried: count },
+      message: `${count} jobs queued for retry`,
+    };
   }
 
   @Delete(':name/jobs/:jobId')
@@ -94,8 +98,8 @@ export class QueueController {
   @ApiOperation({ summary: 'Remove a specific job' })
   async removeJob(@Param('name') name: string, @Param('jobId') jobId: string) {
     const success = await this.queueService.removeJob(name, jobId);
-    if (!success) return { success: false, message: 'Job not found' };
-    return { success: true, message: `Job ${jobId} removed` };
+    if (!success) throw new NotFoundException('Job not found');
+    return { data: null, message: `Job ${jobId} removed` };
   }
 
   // ─── Queue Management ─────────────────────────────────
@@ -107,8 +111,9 @@ export class QueueController {
     summary: 'Pause a queue (stops processing, still accepts jobs)',
   })
   async pauseQueue(@Param('name') name: string) {
-    await this.queueService.pauseQueue(name);
-    return { success: true, message: `Queue ${name} paused` };
+    const success = await this.queueService.pauseQueue(name);
+    if (!success) throw new NotFoundException('Queue not found');
+    return { data: null, message: `Queue ${name} paused` };
   }
 
   @Post(':name/resume')
@@ -116,8 +121,9 @@ export class QueueController {
   @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Resume a paused queue' })
   async resumeQueue(@Param('name') name: string) {
-    await this.queueService.resumeQueue(name);
-    return { success: true, message: `Queue ${name} resumed` };
+    const success = await this.queueService.resumeQueue(name);
+    if (!success) throw new NotFoundException('Queue not found');
+    return { data: null, message: `Queue ${name} resumed` };
   }
 
   @Post(':name/drain')
@@ -125,7 +131,8 @@ export class QueueController {
   @AdminMonitoringWrite()
   @ApiOperation({ summary: 'Drain a queue (remove all waiting jobs)' })
   async drainQueue(@Param('name') name: string) {
-    await this.queueService.drainQueue(name);
-    return { success: true, message: `Queue ${name} drained` };
+    const success = await this.queueService.drainQueue(name);
+    if (!success) throw new NotFoundException('Queue not found');
+    return { data: null, message: `Queue ${name} drained` };
   }
 }

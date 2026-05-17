@@ -4,6 +4,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import express from 'express';
+import type { Request, Response } from 'express';
 import path from 'path';
 import { AppModule } from './app.module';
 import { SanitizePipe } from './common/pipes';
@@ -37,9 +38,21 @@ async function bootstrap() {
     expressApp.set('trust proxy', 1);
   }
 
+  const captureRawBody = (req: Request, _res: Response, buf: Buffer) => {
+    if (buf.length > 0) {
+      (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+    }
+  };
+
   // Body size limits — prevent oversized payloads from crashing the process
-  app.use(express.json({ limit: '1mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+  app.use(express.json({ limit: '1mb', verify: captureRawBody }));
+  app.use(
+    express.urlencoded({
+      extended: true,
+      limit: '1mb',
+      verify: captureRawBody,
+    }),
+  );
 
   // Global prefix
   app.setGlobalPrefix(apiPrefix);
@@ -57,7 +70,18 @@ async function bootstrap() {
   app.use(compressionMiddleware());
 
   // Public local upload serving
-  app.use(uploadPublicPath, express.static(path.resolve(uploadDestination)));
+  app.use(
+    uploadPublicPath,
+    express.static(path.resolve(uploadDestination), {
+      setHeaders: (res) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader(
+          'Content-Security-Policy',
+          "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
+        );
+      },
+    }),
+  );
 
   // Validation & Sanitization
   app.useGlobalPipes(

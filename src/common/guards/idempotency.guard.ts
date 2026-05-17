@@ -42,7 +42,16 @@ export class IdempotencyGuard implements CanActivate {
       return true;
     }
 
-    const idempotencyKey = request.headers[IDEMPOTENCY_HEADER] as string;
+    const headerValue = request.headers[IDEMPOTENCY_HEADER];
+    if (Array.isArray(headerValue)) {
+      throw new BusinessException(
+        `${IDEMPOTENCY_HEADER} header must be a single value`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const idempotencyKey =
+      typeof headerValue === 'string' ? headerValue.trim() : undefined;
 
     if (!idempotencyKey) {
       const required = this.reflector.get<boolean>(
