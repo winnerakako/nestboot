@@ -13,6 +13,7 @@ import { BusinessException } from '../filters';
 export const IDEMPOTENCY_KEY = 'idempotency';
 const IDEMPOTENCY_HEADER = 'x-idempotency-key';
 const DEFAULT_TTL = 86400; // 24 hours
+const MAX_IDEMPOTENCY_KEY_LENGTH = 256;
 
 interface CachedIdempotentResponse {
   statusCode: number;
@@ -57,7 +58,17 @@ export class IdempotencyGuard implements CanActivate {
       return true;
     }
 
-    const cacheKey = `idempotency:${request.method}:${request.url}:${idempotencyKey}`;
+    if (idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+      throw new BusinessException(
+        `${IDEMPOTENCY_HEADER} must be at most ${MAX_IDEMPOTENCY_KEY_LENGTH} characters`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Scope to user identity to prevent cross-user cache collisions.
+    // Two different users with the same idempotency key must be treated independently.
+    const userIdentity = (request as any).user?.sub || request.ip || 'anon';
+    const cacheKey = `idempotency:${userIdentity}:${request.method}:${request.url}:${idempotencyKey}`;
     const redisKey = `cache:${cacheKey}`;
     const ttl =
       this.reflector.get<number>(IDEMPOTENCY_KEY, context.getHandler()) ||
@@ -134,7 +145,29 @@ export class IdempotencyGuard implements CanActivate {
 
     response.send = (body: any) => {
       if (!committed) {
-        releasePlaceholder();
+        committed = true;
+
+        if (response.statusCode >= 400) {
+          releasePlaceholder();
+        } else {
+          // Cache non-JSON responses too (plain text, buffers, etc.)
+          let cacheBody = body;
+          try {
+            // Attempt to parse string body as JSON for consistent caching
+            if (typeof body === 'string') {
+              cacheBody = JSON.parse(body);
+            }
+          } catch {
+            cacheBody = typeof body === 'string' ? body : String(body);
+          }
+
+          void this.cacheCompletedResponse(cacheKey, {
+            statusCode: response.statusCode,
+            completed: true,
+            body: cacheBody,
+            ttl,
+          });
+        }
       }
       return originalSend(body);
     };

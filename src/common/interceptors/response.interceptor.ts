@@ -44,7 +44,7 @@ export class ResponseInterceptor<T> implements NestInterceptor<
               success: true,
               message:
                 typeof record.message === 'string' ? record.message : 'Success',
-              data: record.data,
+              data: record.data ?? null,
               ...(hasMeta ? { meta: record.meta } : {}),
             } as StandardResponse<T>;
           }

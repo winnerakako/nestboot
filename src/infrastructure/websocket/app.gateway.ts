@@ -19,11 +19,18 @@ import { RedisService } from '../cache/redis.service';
 const MAX_CONNECTIONS_PER_USER = 5;
 const RATE_LIMIT_WINDOW_MS = 10000; // 10 seconds
 const RATE_LIMIT_MAX_MESSAGES = 50; // 50 messages per 10 seconds
+const MAX_CUSTOM_ROOMS_PER_USER = 20;
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
   userRole?: string;
   userOrgId?: string;
+}
+
+interface AuthenticatedJwtPayload {
+  sub: string;
+  role?: string;
+  orgId?: string;
 }
 
 @WebSocketGateway({
@@ -80,9 +87,7 @@ export class AppGateway
 
   async handleConnection(client: AuthenticatedSocket) {
     // Authenticate via JWT in handshake
-    const token =
-      client.handshake.auth?.token ||
-      client.handshake.headers?.authorization?.replace('Bearer ', '');
+    const token = this.extractAuthToken(client);
 
     if (!token) {
       client.emit('error:auth', { message: 'Authentication required' });
@@ -91,8 +96,10 @@ export class AppGateway
     }
 
     try {
-      const secret = this.configService.get<string>('auth.jwtSecret');
-      const payload = this.jwtService.verify(token, { secret });
+      const secret: string = this.configService.get<string>('auth.jwtSecret')!;
+      const payload = this.jwtService.verify<AuthenticatedJwtPayload>(token, {
+        secret,
+      });
 
       client.userId = payload.sub;
       client.userRole = payload.role;
@@ -155,6 +162,21 @@ export class AppGateway
     );
   }
 
+  private extractAuthToken(client: AuthenticatedSocket): string | undefined {
+    const auth = client.handshake.auth as { token?: unknown } | undefined;
+    if (typeof auth?.token === 'string' && auth.token.length > 0) {
+      return auth.token;
+    }
+
+    const authorization = client.handshake.headers?.authorization;
+    if (!authorization?.startsWith('Bearer ')) {
+      return undefined;
+    }
+
+    const token = authorization.slice('Bearer '.length);
+    return token.length > 0 ? token : undefined;
+  }
+
   // ─── Message Handlers ──────────────────────────────────
 
   @SubscribeMessage('ping')
@@ -173,6 +195,21 @@ export class AppGateway
 
     // Only allow joining rooms prefixed with 'custom:' to prevent hijacking system rooms
     const room = `custom:${data.room}`;
+
+    // Limit custom rooms per user to prevent memory exhaustion
+    const currentRooms = Array.from(client.rooms).filter((r) =>
+      r.startsWith('custom:'),
+    );
+    if (
+      currentRooms.length >= MAX_CUSTOM_ROOMS_PER_USER &&
+      !currentRooms.includes(room)
+    ) {
+      client.emit('error:max-rooms', {
+        message: `Maximum ${MAX_CUSTOM_ROOMS_PER_USER} custom rooms per connection`,
+      });
+      return;
+    }
+
     await client.join(room);
     return { event: 'room:joined', data: { room } };
   }

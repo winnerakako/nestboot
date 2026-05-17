@@ -55,6 +55,7 @@ export abstract class BaseStreamConsumer
   private running = false;
   private claimTimer: ReturnType<typeof setInterval> | null = null;
   private activeCount = 0;
+  private pollFailures = 0;
   private readonly activeMessageIds = new Set<string>();
   private readonly consumerName: string;
   private readonly opts: Required<
@@ -187,7 +188,11 @@ export abstract class BaseStreamConsumer
           blockMs,
         );
 
-        if (messages.length === 0) continue;
+        if (messages.length === 0) {
+          this.pollFailures = 0;
+          continue;
+        }
+        this.pollFailures = 0;
 
         if (this.opts.concurrency === 1) {
           for (const message of messages) {
@@ -200,8 +205,15 @@ export abstract class BaseStreamConsumer
         }
       } catch (error) {
         if (this.running) {
-          this.logger.error(`Poll error: ${(error as Error).message}`);
-          await this.sleep(2000);
+          this.pollFailures = (this.pollFailures || 0) + 1;
+          const backoff = Math.min(
+            2000 * Math.pow(2, this.pollFailures - 1),
+            30000,
+          );
+          this.logger.error(
+            `Poll error (attempt ${this.pollFailures}, backoff ${backoff}ms): ${(error as Error).message}`,
+          );
+          await this.sleep(backoff);
         }
       }
     }
@@ -370,6 +382,19 @@ export abstract class BaseStreamConsumer
       this.logger.warn(
         `Dead lettered ${deadLetterIds.length} messages in ${this.opts.stream}/${this.opts.group}`,
       );
+
+      // Emit alert for each dead-lettered message
+      for (const id of deadLetterIds) {
+        this.appLogger.error(`Stream dead letter: ${this.opts.stream}/${id}`, {
+          context: `StreamConsumer:${this.opts.group}`,
+          metadata: {
+            stream: this.opts.stream,
+            group: this.opts.group,
+            messageId: id,
+            maxRetries: this.opts.maxRetries,
+          },
+        });
+      }
     }
 
     // Retryable: claim and reprocess

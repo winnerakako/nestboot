@@ -118,13 +118,12 @@ export class DistributedThrottleGuard implements CanActivate {
       ]) || DEFAULT_CONFIG;
 
     // Build key: user-specific + route-specific
-    const userId =
-      (request as any).user?.sub ||
-      request.ip ||
-      request.headers['x-forwarded-for'] ||
-      'anonymous';
+    // Use authenticated user ID when available, otherwise fall back to request.ip.
+    // Do NOT use x-forwarded-for directly — it's client-spoofable.
+    // Configure Express "trust proxy" in main.ts so request.ip resolves correctly behind proxies.
+    const identity = (request as any).user?.sub || request.ip || 'unknown';
     const routeKey = `${request.method}:${request.route?.path || request.path}`;
-    const redisKey = `throttle:${userId}:${routeKey}`;
+    const redisKey = `throttle:${identity}:${routeKey}`;
 
     // Atomic increment with TTL using Redis pipeline
     const client = this.cache.getClient();
@@ -153,7 +152,8 @@ export class DistributedThrottleGuard implements CanActivate {
 
     // Calculate remaining
     const remaining = Math.max(0, config.limit - (currentCount as number));
-    const resetTime = Math.ceil(Date.now() / 1000) + config.windowSeconds;
+    const resetSeconds = ttl > 0 ? ttl : config.windowSeconds;
+    const resetTime = Math.ceil(Date.now() / 1000) + resetSeconds;
 
     // Set standard rate limit headers
     response.setHeader('RateLimit-Limit', config.limit);

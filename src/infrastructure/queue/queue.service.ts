@@ -124,6 +124,8 @@ export class QueueService implements OnModuleDestroy {
     return jobId;
   }
 
+  private static readonly MAX_BULK_SIZE = 1000;
+
   async addBulk<T = any>(
     queueName: string,
     jobs: { name: string; data: T; options?: AddJobOptions }[],
@@ -131,6 +133,13 @@ export class QueueService implements OnModuleDestroy {
     const queue = this.queues.get(queueName);
     if (!queue) {
       throw new Error(`Queue "${queueName}" not registered.`);
+    }
+
+    if (jobs.length > QueueService.MAX_BULK_SIZE) {
+      throw new Error(
+        `addBulk: batch size ${jobs.length} exceeds maximum of ${QueueService.MAX_BULK_SIZE}. ` +
+          `Split into smaller batches.`,
+      );
     }
 
     const bulkJobs = jobs.map((j) => ({

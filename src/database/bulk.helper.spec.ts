@@ -111,7 +111,7 @@ describe('BulkHelper', () => {
 
   it('counts upsert creates and updates without relying on timestamps', async () => {
     const txModel = {
-      findUnique: jest
+      findFirst: jest
         .fn()
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({ id: 'existing-user' }),
@@ -135,10 +135,10 @@ describe('BulkHelper', () => {
       ),
     ).resolves.toEqual({ created: 1, updated: 1 });
 
-    expect(txModel.findUnique).toHaveBeenNthCalledWith(1, {
+    expect(txModel.findFirst).toHaveBeenNthCalledWith(1, {
       where: { email: 'new@example.com' },
     });
-    expect(txModel.findUnique).toHaveBeenNthCalledWith(2, {
+    expect(txModel.findFirst).toHaveBeenNthCalledWith(2, {
       where: { email: 'old@example.com' },
     });
     expect(txModel.upsert).toHaveBeenCalledTimes(2);

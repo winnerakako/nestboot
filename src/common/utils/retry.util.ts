@@ -39,6 +39,10 @@ export async function retry<T>(
     label = 'operation',
   } = options;
 
+  if (maxAttempts < 1) {
+    throw new Error(`${label}: maxAttempts must be at least 1`);
+  }
+
   let lastError: Error;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

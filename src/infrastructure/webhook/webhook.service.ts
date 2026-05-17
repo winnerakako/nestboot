@@ -30,6 +30,8 @@ export interface WebhookEvent {
 
 const WEBHOOK_PROCESSED_TTL_SECONDS = 86400;
 const WEBHOOK_PROCESSING_TTL_SECONDS = 300;
+// Max expected HMAC hex length: sha512 = 128 hex chars + optional prefix (e.g. "sha512=")
+const MAX_SIGNATURE_LENGTH = 256;
 
 @Injectable()
 export class WebhookService implements OnModuleInit {
@@ -73,6 +75,11 @@ export class WebhookService implements OnModuleInit {
     if (!signature) {
       this.logger.warn(`Missing signature header for ${providerName}`);
       throw new BusinessException('Missing webhook signature');
+    }
+
+    if (signature.length > MAX_SIGNATURE_LENGTH) {
+      this.logger.warn(`Oversized signature header for ${providerName}`);
+      throw new BusinessException('Invalid webhook signature');
     }
 
     if (!this.verifySignature(rawBody, signature, provider)) {

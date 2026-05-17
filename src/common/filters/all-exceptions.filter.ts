@@ -58,6 +58,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
           errors = res.message;
         }
       }
+
+      // In production, mask internal details on 5xx responses
+      if (
+        status >= HttpStatus.INTERNAL_SERVER_ERROR &&
+        process.env.NODE_ENV === 'production'
+      ) {
+        this.logger.error(
+          `Server error: ${exception.message}`,
+          exception.stack,
+        );
+        message = 'Internal server error';
+        errors = undefined;
+      }
     } else if (exception instanceof Error) {
       this.logger.error(
         `Unhandled exception: ${exception.message}`,

@@ -136,6 +136,18 @@ export abstract class BaseWorker implements OnModuleDestroy {
             isFinalAttempt,
           });
 
+          // Alert on final failure (dead letter)
+          if (isFinalAttempt) {
+            this.events.emit('queue.deadLetter', {
+              queue: this.queueName,
+              jobName: job.name,
+              jobId: job.id || 'unknown',
+              failedReason: err.message,
+              attemptsMade: job.attemptsMade + 1,
+              timestamp: new Date(),
+            });
+          }
+
           throw error; // Re-throw so BullMQ handles retry
         }
       },

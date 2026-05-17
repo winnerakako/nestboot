@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -10,7 +15,7 @@ import Redis from 'ioredis';
  * namespacing, mandatory TTL, and cache-aside patterns.
  */
 @Injectable()
-export class RedisService implements OnModuleDestroy {
+export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private readonly client: Redis;
 
@@ -30,6 +35,22 @@ export class RedisService implements OnModuleDestroy {
     this.client.on('error', (err) => {
       this.logger.error('Redis connection error', err);
     });
+  }
+
+  async onModuleInit() {
+    // Validate Redis connectivity at startup — fail fast if misconfigured
+    try {
+      const pong = await this.client.ping();
+      if (pong !== 'PONG') {
+        throw new Error(`Unexpected PING response: ${pong}`);
+      }
+      this.logger.log('Redis connected (PING OK)');
+    } catch (error) {
+      this.logger.error(
+        `Redis connection failed at startup: ${(error as Error).message}. ` +
+          `Rate limiting, caching, queues, and streams will not function correctly.`,
+      );
+    }
   }
 
   /**

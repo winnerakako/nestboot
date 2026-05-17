@@ -315,6 +315,54 @@ export class UploadService implements OnModuleInit {
 
   // ─── Local Operations ──────────────────────────────────
 
+  /** Max total storage for local uploads (default: 1GB). Override with UPLOAD_LOCAL_MAX_BYTES env. */
+  private getLocalMaxBytes(): number {
+    return this.configService.get<number>(
+      'upload.localMaxBytes',
+      1024 * 1024 * 1024, // 1GB default
+    );
+  }
+
+  private async checkLocalDiskQuota(
+    root: string,
+    incomingSize: number,
+  ): Promise<void> {
+    const maxBytes = this.getLocalMaxBytes();
+    if (maxBytes <= 0) return; // 0 or negative = unlimited
+
+    let totalSize = 0;
+    try {
+      totalSize = await this.getDirectorySize(root);
+    } catch {
+      return; // If we can't read the dir, skip quota check
+    }
+
+    if (totalSize + incomingSize > maxBytes) {
+      throw new BusinessException(
+        `Upload storage quota exceeded (${Math.round(maxBytes / 1024 / 1024)}MB limit). Delete some files or switch to S3.`,
+      );
+    }
+  }
+
+  private async getDirectorySize(dir: string): Promise<number> {
+    let total = 0;
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          total += await this.getDirectorySize(fullPath);
+        } else {
+          const stat = await fs.stat(fullPath);
+          total += stat.size;
+        }
+      }
+    } catch {
+      // Directory doesn't exist yet or permission error
+    }
+    return total;
+  }
+
   private async uploadToLocal(
     file: Express.Multer.File,
     key: string,
@@ -334,6 +382,9 @@ export class UploadService implements OnModuleInit {
     if (!this.isWithinDirectory(fullFolder, root)) {
       throw new BusinessException('Invalid upload folder');
     }
+
+    // Enforce local disk quota
+    await this.checkLocalDiskQuota(root, file.size);
 
     await fs.mkdir(fullFolder, { recursive: true });
 

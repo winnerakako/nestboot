@@ -29,22 +29,35 @@ async function bootstrap() {
     '/uploads',
   );
 
+  // Trust proxy — required for correct client IP resolution behind reverse proxies (nginx, ALB, Cloudflare).
+  // Uses Express's built-in trust: 1 = trust the first proxy hop. Adjust for your infrastructure.
+  // Without this, request.ip is the proxy's IP, breaking rate limiting and audit trails.
+  if (env === 'production') {
+    const expressApp = app.getHttpAdapter().getInstance();
+    expressApp.set('trust proxy', 1);
+  }
+
+  // Body size limits — prevent oversized payloads from crashing the process
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
   // Global prefix
   app.setGlobalPrefix(apiPrefix);
+
+  // Security headers — must be before any response-sending middleware (e.g. static files)
+  app.use(helmet());
+  app.enableCors({
+    origin: configService.get<string>('app.frontendUrl'),
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    maxAge: 86400, // Cache preflight responses for 24 hours
+  });
 
   // Compression (gzip/deflate for responses > 1KB)
   app.use(compressionMiddleware());
 
   // Public local upload serving
   app.use(uploadPublicPath, express.static(path.resolve(uploadDestination)));
-
-  // Security
-  app.use(helmet());
-  app.enableCors({
-    origin: configService.get<string>('app.frontendUrl'),
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  });
 
   // Validation & Sanitization
   app.useGlobalPipes(

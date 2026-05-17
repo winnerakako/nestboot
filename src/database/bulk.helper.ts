@@ -119,14 +119,15 @@ export class BulkHelper {
    * @param model - Prisma model name
    * @param data - Array of records to upsert
    * @param uniqueFields - Fields that identify uniqueness (used in where clause)
-   * @param chunkSize - Records per batch (default: 100)
+   * @param options.chunkSize - Records per batch (default: 100)
+   * @param options.compoundKeyName - Custom Prisma compound unique key name (for @@unique with name attribute)
    * @returns Counts of created and updated records
    */
   async upsertMany(
     model: string,
     data: Record<string, any>[],
     uniqueFields: string[],
-    options?: { chunkSize?: number },
+    options?: { chunkSize?: number; compoundKeyName?: string },
   ): Promise<{ created: number; updated: number }> {
     if (!data.length) return { created: 0, updated: 0 };
     if (uniqueFields.length === 0) {
@@ -155,13 +156,21 @@ export class BulkHelper {
           let chunkUpdated = 0;
 
           for (const item of chunks[i]) {
-            const where = this.buildWhereClause(item, uniqueFields);
-            const existing = await txModel.findUnique({ where });
+            const where = this.buildWhereClause(
+              item,
+              uniqueFields,
+              options?.compoundKeyName,
+            );
 
+            const existing = await txModel.findFirst({
+              where: this.flattenWhereClause(where),
+            });
+
+            const updateData = this.stripUniqueFields(item, uniqueFields);
             await txModel.upsert({
               where,
               create: item,
-              update: item,
+              update: updateData,
             });
 
             if (existing) {
@@ -205,6 +214,7 @@ export class BulkHelper {
     const softDelete = options?.softDelete ?? false;
     const prismaModel = this.getModel(model);
     let totalDeleted = 0;
+    const deletedAt = softDelete ? new Date() : undefined;
 
     const chunks = this.chunk(ids, chunkSize);
 
@@ -212,7 +222,7 @@ export class BulkHelper {
       if (softDelete) {
         const result = await prismaModel.updateMany({
           where: { id: { in: idChunk } },
-          data: { deletedAt: new Date() },
+          data: { deletedAt },
         });
         totalDeleted += result.count;
       } else {
@@ -274,18 +284,20 @@ export class BulkHelper {
 
       await callback(
         shouldStripCursorId
-          ? records.map((record: Record<string, any>) => {
+          ? (records as Record<string, any>[]).map((record) => {
               const recordWithoutCursor = { ...record };
               delete recordWithoutCursor.id;
               return recordWithoutCursor;
             })
-          : records,
+          : (records as Record<string, any>[]),
       );
       totalProcessed += records.length;
       cursor = records[records.length - 1].id;
 
       if (!cursor) {
-        throw new Error('Batch cursor field "id" is missing from query result');
+        throw new Error(
+          `Batch cursor field "id" has a null or empty value in model "${model}". Check for corrupt data.`,
+        );
       }
 
       this.logger.log(
@@ -337,6 +349,7 @@ export class BulkHelper {
   private buildWhereClause(
     item: Record<string, any>,
     uniqueFields: string[],
+    compoundKeyName?: string,
   ): Record<string, any> {
     if (uniqueFields.length === 0) {
       throw new Error('uniqueFields must contain at least one field');
@@ -352,12 +365,61 @@ export class BulkHelper {
       return { [uniqueFields[0]]: item[uniqueFields[0]] };
     }
 
-    // Prisma compound unique: fieldA_fieldB
-    const compoundKey = uniqueFields.join('_');
+    // Prisma compound unique: use provided name or default to fieldA_fieldB
+    const key = compoundKeyName || uniqueFields.join('_');
     const where: Record<string, any> = {};
     for (const field of uniqueFields) {
       where[field] = item[field];
     }
-    return { [compoundKey]: where };
+    return { [key]: where };
+  }
+
+  /**
+   * Flattens a compound where clause for use with findFirst.
+   * Converts `{ fieldA_fieldB: { fieldA: x, fieldB: y } }` to `{ fieldA: x, fieldB: y }`.
+   */
+  private flattenWhereClause(where: Record<string, any>): Record<string, any> {
+    const keys = Object.keys(where);
+    if (keys.length === 1) {
+      const value = where[keys[0]];
+      if (
+        value !== null &&
+        typeof value === 'object' &&
+        !Array.isArray(value)
+      ) {
+        // Check if this is a compound key wrapper (object with only scalar/value-type fields).
+        // Scalar values: string, number, boolean, null, bigint
+        // Value-type objects: Date, Buffer (not plain objects like Prisma filters)
+        const innerValues = Object.values(value as Record<string, unknown>);
+        const isCompound = innerValues.every(
+          (v) =>
+            v === null ||
+            typeof v !== 'object' ||
+            v instanceof Date ||
+            Buffer.isBuffer(v),
+        );
+        if (isCompound) {
+          return value;
+        }
+      }
+    }
+    return where;
+  }
+
+  /**
+   * Strips unique fields from an item to produce a safe update payload.
+   * Prevents updating unique/identity fields to themselves.
+   */
+  private stripUniqueFields(
+    item: Record<string, any>,
+    uniqueFields: string[],
+  ): Record<string, any> {
+    const update: Record<string, any> = {};
+    for (const [key, value] of Object.entries(item)) {
+      if (!uniqueFields.includes(key)) {
+        update[key] = value;
+      }
+    }
+    return update;
   }
 }

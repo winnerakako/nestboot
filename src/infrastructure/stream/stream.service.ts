@@ -1,8 +1,10 @@
 import {
+  Inject,
   Injectable,
   Logger,
   OnModuleInit,
   OnModuleDestroy,
+  Optional,
 } from '@nestjs/common';
 import Redis from 'ioredis';
 import { CacheService } from '../cache/cache.service';
@@ -56,10 +58,15 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
   private readonly streamPrefix: string;
   private readonly maxStreamLength: number;
 
-  constructor(private readonly cacheService: CacheService) {
+  constructor(
+    private readonly cacheService: CacheService,
+    @Inject('STREAM_CONFIG')
+    @Optional()
+    private readonly streamConfig?: { maxStreamLength?: number },
+  ) {
     this.client = this.cacheService.getClient();
     this.streamPrefix = 'stream:';
-    this.maxStreamLength = 100000;
+    this.maxStreamLength = this.streamConfig?.maxStreamLength ?? 100000;
   }
 
   onModuleInit() {
@@ -232,7 +239,10 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
 
       if (!results) return [];
 
-      return this.parseStreamResults(results, stream);
+      return this.parseStreamResults(
+        results as [string, [string, string[]][]][],
+        stream,
+      );
     } catch (error: any) {
       if (error.message?.includes('NOGROUP')) {
         await this.createConsumerGroup(stream, group);
@@ -288,7 +298,7 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
         count: result[0],
         minId: result[1],
         maxId: result[2],
-        consumers: (result[3] || []).map((c: any) => ({
+        consumers: ((result[3] || []) as string[][]).map((c) => ({
           name: c[0],
           count: parseInt(c[1], 10),
         })),
@@ -329,7 +339,7 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
 
       if (!results || !Array.isArray(results)) return [];
 
-      return results.map((entry: any) => ({
+      return results.map((entry: string[]) => ({
         id: entry[0],
         consumer: entry[1],
         idleMs: parseInt(entry[2], 10),
@@ -377,7 +387,7 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
 
       if (!results || !Array.isArray(results)) return [];
 
-      return results.map((entry: any) => ({
+      return results.map((entry: [string, string[]]) => ({
         id: entry[0],
         stream,
         data: this.deserializeFields(entry[1]),
@@ -416,7 +426,7 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
 
       if (!results || !Array.isArray(results)) return [];
 
-      return results.map((entry: any) => ({
+      return results.map((entry: [string, string[]]) => ({
         id: entry[0],
         stream,
         data: this.deserializeFields(entry[1]),
@@ -561,15 +571,22 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
 
       let groups: StreamGroupStats[] = [];
       try {
-        const groupsInfo = (await this.client.xinfo('GROUPS', key)) as any[];
-        groups = groupsInfo.map((g: any) => {
-          const gMap = this.arrayToMap(g);
-          const lastDeliveredId = gMap.get('last-delivered-id') || '0';
+        const groupsInfo = (await this.client.xinfo(
+          'GROUPS',
+          key,
+        )) as unknown[][];
+        groups = groupsInfo.map((g) => {
+          const gMap = this.arrayToMap(g as any[]);
+          const lastDeliveredId =
+            (gMap.get('last-delivered-id') as string) || '0';
 
           // Calculate lag: messages in stream after lastDeliveredId
           let lag = 0;
           if (lastEntry && lastDeliveredId !== '0') {
-            const lastEntryTs = parseInt(lastEntry.split('-')[0], 10);
+            const lastEntryTs = parseInt(
+              (lastEntry as string).split('-')[0],
+              10,
+            );
             const lastDeliveredTs = parseInt(lastDeliveredId.split('-')[0], 10);
             lag =
               lastEntryTs > lastDeliveredTs
@@ -847,7 +864,7 @@ export class StreamService implements OnModuleInit, OnModuleDestroy {
   }
 
   private parseStreamResults(
-    results: any,
+    results: [string, [string, string[]][]][],
     streamName: string,
   ): StreamMessage[] {
     const messages: StreamMessage[] = [];

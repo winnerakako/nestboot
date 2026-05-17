@@ -65,9 +65,9 @@ export abstract class BaseCrudService<ModelName extends string> {
   ): Promise<PaginatedResponse<any>> {
     let where: Record<string, any> = { ...extra?.where };
 
-    // Soft delete filter
+    // Soft delete filter — always enforced, cannot be overridden by callers
     if (this.options.softDelete) {
-      where.deletedAt = where.deletedAt ?? null;
+      where.deletedAt = null;
     }
 
     // Search across configured fields
@@ -108,7 +108,7 @@ export abstract class BaseCrudService<ModelName extends string> {
       this.model.count({ where }),
     ]);
 
-    return paginate(data, total, pagination);
+    return paginate(data as T[], total as number, pagination);
   }
 
   async findById(
@@ -202,8 +202,9 @@ export abstract class BaseCrudService<ModelName extends string> {
   async count(where?: Record<string, any>): Promise<number> {
     const finalWhere: Record<string, any> = { ...where };
 
+    // Soft delete filter — always enforced, cannot be overridden by callers
     if (this.options.softDelete) {
-      finalWhere.deletedAt = finalWhere.deletedAt ?? null;
+      finalWhere.deletedAt = null;
     }
 
     return this.model.count({ where: finalWhere });

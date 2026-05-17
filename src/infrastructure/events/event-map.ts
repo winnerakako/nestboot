@@ -35,6 +35,31 @@ export interface EventMap {
     timestamp: Date;
   };
 
+  // ─── Queue/Stream Alerts ──────────────────────────────
+  'queue.deadLetter': {
+    queue: string;
+    jobName: string;
+    jobId: string;
+    failedReason: string;
+    attemptsMade: number;
+    timestamp: Date;
+  };
+  'stream.deadLetter': {
+    stream: string;
+    group: string;
+    messageId: string;
+    deliveryCount: number;
+    timestamp: Date;
+  };
+
+  // ─── Metrics Events (subscribe for Prometheus/Datadog/custom dashboards) ──
+  'metric.recorded': {
+    name: string;
+    value: number;
+    tags?: Record<string, string>;
+    timestamp: Date;
+  };
+
   // ─── Add your domain events below ─────────────────────
   // 'user.created': { userId: string; email: string };
   // 'user.deleted': { userId: string };

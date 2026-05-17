@@ -21,7 +21,7 @@ import {
   AuditContextInterceptor,
 } from './common/interceptors';
 import { RequestIdMiddleware } from './common/middlewares';
-import { DistributedThrottleGuard } from './common/guards';
+import { DistributedThrottleGuard, JwtAuthGuard } from './common/guards';
 import {
   GracefulShutdownService,
   ErrorReporterService,
@@ -39,6 +39,7 @@ import { LoggingModule } from './infrastructure/logging/logging.module';
 import { CronModule } from './infrastructure/cron/cron.module';
 import { EventsModule } from './infrastructure/events/events.module';
 import { StreamModule } from './infrastructure/stream/stream.module';
+import { MetricsModule } from './infrastructure/metrics';
 import { RequestLoggerInterceptor } from './infrastructure/logging/services';
 
 @Module({
@@ -80,6 +81,7 @@ import { RequestLoggerInterceptor } from './infrastructure/logging/services';
     LoggingModule,
     CronModule,
     StreamModule,
+    MetricsModule,
   ],
   providers: [
     // Global services
@@ -88,6 +90,9 @@ import { RequestLoggerInterceptor } from './infrastructure/logging/services';
 
     // Global Exception Filter
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
+
+    // Global JWT Authentication (use @Public() to opt out)
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
 
     // Global Rate Limiter (Redis-backed, distributed)
     { provide: APP_GUARD, useClass: DistributedThrottleGuard },

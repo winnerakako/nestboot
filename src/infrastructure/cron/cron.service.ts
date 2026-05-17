@@ -97,7 +97,7 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     for (const [name, job] of this.registeredCrons) {
-      job.stop();
+      void job.stop();
       this.logger.log(`Cron stopped: ${name}`);
     }
     this.registeredCrons.clear();
@@ -137,7 +137,7 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
       timezone,
     );
 
-    this.schedulerRegistry.addCronJob(options.name, job as any);
+    this.schedulerRegistry.addCronJob(options.name, job as CronJob<null, null>);
     this.registeredCrons.set(options.name, job);
     this.cronOptions.set(options.name, options);
 
@@ -196,7 +196,7 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
     if (!job) return false;
 
     this.logger.log(`Cron "${name}" manually triggered`);
-    job.fireOnTick();
+    void job.fireOnTick();
     return true;
   }
 
@@ -368,20 +368,30 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
     cronName: string,
     abortController: AbortController,
   ): Promise<void> {
+    let completed = false;
+
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
+        if (completed) return;
         abortController.abort(
           new Error(`Cron "${cronName}" timed out after ${timeoutMs}ms`),
+        );
+        this.logger.error(
+          `Cron "${cronName}" timed out after ${timeoutMs}ms. ` +
+            `The function is still running in the background. ` +
+            `Use logger.throwIfAborted() in your cron to check the abort signal and exit early.`,
         );
         reject(new Error(`Cron "${cronName}" timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
       cronFn(cronLogger)
         .then(() => {
+          completed = true;
           clearTimeout(timer);
           resolve();
         })
         .catch((err) => {
+          completed = true;
           clearTimeout(timer);
           reject(err);
         });

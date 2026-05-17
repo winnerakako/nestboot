@@ -28,12 +28,20 @@ export class SanitizePipe implements PipeTransform {
   }
 
   private sanitizeString(value: string): string {
-    return value
-      .trim()
-      .replace(/\0/g, '') // null bytes
-      .replace(/<[^>]*>/g, '') // HTML tags
-      .replace(/javascript:/gi, '') // javascript: protocol
-      .replace(/on\w+\s*=/gi, ''); // inline event handlers
+    let result = value.trim().replace(/\0/g, ''); // null bytes
+
+    // Multi-pass HTML stripping to handle nested payloads like <scr<script>ipt>
+    let previous: string;
+    do {
+      previous = result;
+      result = result
+        .replace(/<[a-zA-Z/!][^>]*>/g, '') // closed HTML tags (starts with letter, / or ! — won't match "< 100 >")
+        .replace(/<[a-zA-Z/][^>]*$/g, '') // unclosed HTML tags (e.g. <img src=x onerror=...) — won't match "price < 100"
+        .replace(/javascript\s*:/gi, '') // javascript: protocol (with optional whitespace)
+        .replace(/on\w+\s*=/gi, ''); // inline event handlers
+    } while (result !== previous);
+
+    return result;
   }
 
   private sanitizeObject(obj: any): any {
@@ -42,7 +50,7 @@ export class SanitizePipe implements PipeTransform {
     }
 
     const sanitized: any = {};
-    for (const [key, value] of Object.entries(obj)) {
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
       sanitized[key] = this.transform(value);
     }
     return sanitized;

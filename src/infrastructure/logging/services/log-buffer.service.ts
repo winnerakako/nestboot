@@ -18,6 +18,9 @@ export class LogBufferService implements OnModuleDestroy {
   private flushTimer: NodeJS.Timeout | null = null;
   private flushing = false;
   private activeFlush: Promise<void> | null = null;
+  private consecutiveFailures = 0;
+  private lastFailureTime = 0;
+  private readonly maxBackoffMs = 60000;
 
   constructor(
     private readonly conn: LogConnectionService,
@@ -89,8 +92,20 @@ export class LogBufferService implements OnModuleDestroy {
   }
 
   private async flushCurrentBuffer(): Promise<void> {
+    // Exponential backoff: skip flush if backing off from consecutive failures
+    if (this.consecutiveFailures > 0) {
+      const backoffMs = Math.min(
+        1000 * Math.pow(2, this.consecutiveFailures - 1),
+        this.maxBackoffMs,
+      );
+      const elapsed = Date.now() - this.lastFailureTime;
+      if (elapsed < backoffMs) return;
+    }
+
     const entries = [...this.buffer];
     this.buffer = [];
+
+    let hadFailure = false;
 
     try {
       const grouped = new Map<string, any[]>();
@@ -107,12 +122,22 @@ export class LogBufferService implements OnModuleDestroy {
             await model.insertMany(docs, { ordered: false });
           }
         } catch (error) {
+          hadFailure = true;
           this.logger.error(
             `Failed to flush ${docs.length} ${modelName} logs: ${(error as Error).message}`,
           );
         }
       }
+
+      if (hadFailure) {
+        this.consecutiveFailures++;
+        this.lastFailureTime = Date.now();
+      } else {
+        this.consecutiveFailures = 0;
+      }
     } catch (error) {
+      this.consecutiveFailures++;
+      this.lastFailureTime = Date.now();
       this.buffer.unshift(...entries);
       throw error;
     }

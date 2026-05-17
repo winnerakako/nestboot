@@ -1,4 +1,5 @@
-const SENSITIVE_KEYS = new Set([
+// Exact matches (after lowercasing and stripping hyphens/underscores)
+const SENSITIVE_EXACT = new Set([
   'password',
   'token',
   'secret',
@@ -17,13 +18,22 @@ const SENSITIVE_KEYS = new Set([
   'accesstoken',
   'refreshtoken',
   'apikey',
-  'api_key',
   'private',
   'creditcard',
   'cardnumber',
-  'card_number',
   'securitycode',
+  'sessionid',
 ]);
+
+// Substring patterns — if ANY of these appear within the normalized key, redact it.
+// Catches variants like passwordHash, tokenSecret, privateKey, jwtToken, etc.
+const SENSITIVE_SUBSTRINGS = [
+  'password',
+  'secret',
+  'token',
+  'private',
+  'credential',
+];
 
 const MAX_STRING_LENGTH = 1024;
 const MAX_DEPTH = 5;
@@ -45,18 +55,23 @@ export function redact(obj: any, depth = 0, seen = new WeakSet()): any {
 
   if (depth >= MAX_DEPTH) return '[max depth]';
 
+  const ref = obj as object;
+
   // Circular reference detection
-  if (seen.has(obj)) return '[circular]';
-  seen.add(obj);
+  if (seen.has(ref)) return '[circular]';
+  seen.add(ref);
 
   if (Array.isArray(obj)) {
     return obj.map((item) => redact(item, depth + 1, seen));
   }
 
   const redacted: Record<string, any> = {};
-  for (const [key, value] of Object.entries(obj)) {
+  for (const [key, value] of Object.entries(ref as Record<string, unknown>)) {
     const lowerKey = key.toLowerCase().replace(/[-_]/g, '');
-    if (SENSITIVE_KEYS.has(lowerKey)) {
+    if (
+      SENSITIVE_EXACT.has(lowerKey) ||
+      SENSITIVE_SUBSTRINGS.some((sub) => lowerKey.includes(sub))
+    ) {
       redacted[key] = '[REDACTED]';
     } else {
       redacted[key] = redact(value, depth + 1, seen);

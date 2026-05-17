@@ -149,6 +149,9 @@ export class EmailService implements OnModuleInit {
     // Register Handlebars partials from templates/email/partials/
     await this.registerPartials();
 
+    // Validate that the template directory exists and log available templates
+    await this.validateTemplates();
+
     this.logger.log(
       `Email service initialized (provider: ${this.provider.name})`,
     );
@@ -262,7 +265,7 @@ export class EmailService implements OnModuleInit {
     return serialized?.map((attachment: any) => ({
       ...attachment,
       content: attachment._isBase64
-        ? Buffer.from(attachment.content, 'base64')
+        ? Buffer.from(attachment.content as string, 'base64')
         : attachment.content,
       _isBase64: undefined,
     }));
@@ -365,6 +368,27 @@ export class EmailService implements OnModuleInit {
       }
     } catch {
       // No partials directory — that's fine
+    }
+  }
+
+  private async validateTemplates(): Promise<void> {
+    try {
+      const files = await fs.readdir(this.templateDir);
+      const templates = files
+        .filter((f) => f.endsWith('.hbs') && f !== 'layout.hbs')
+        .map((f) => f.replace('.hbs', ''));
+
+      if (templates.length === 0) {
+        this.logger.warn(
+          `No email templates found in ${this.templateDir}. Email sends using templates will fail.`,
+        );
+      } else {
+        this.logger.log(`Email templates available: ${templates.join(', ')}`);
+      }
+    } catch {
+      this.logger.warn(
+        `Email template directory not found: ${this.templateDir}. Create it or email sends using templates will fail at runtime.`,
+      );
     }
   }
 

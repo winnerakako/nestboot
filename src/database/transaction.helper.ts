@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 
 type TransactionClient = Omit<
@@ -36,11 +36,7 @@ export class TransactionHelper {
     options?: {
       maxWait?: number;
       timeout?: number;
-      isolationLevel?:
-        | 'ReadUncommitted'
-        | 'ReadCommitted'
-        | 'RepeatableRead'
-        | 'Serializable';
+      isolationLevel?: Prisma.TransactionIsolationLevel;
     },
   ): Promise<T> {
     const timeout = options?.timeout ?? 10000;
@@ -49,7 +45,7 @@ export class TransactionHelper {
     try {
       const result = await this.prisma.$transaction(
         async (tx) => fn(tx as unknown as TransactionClient),
-        { maxWait, timeout, isolationLevel: options?.isolationLevel as any },
+        { maxWait, timeout, isolationLevel: options?.isolationLevel },
       );
       return result;
     } catch (error) {
@@ -75,7 +71,9 @@ export class TransactionHelper {
     ...operations: [...{ [K in keyof T]: Promise<T[K]> }]
   ): Promise<T> {
     try {
-      const results = await this.prisma.$transaction(operations as any);
+      const results = await this.prisma.$transaction(
+        operations as Prisma.PrismaPromise<unknown>[],
+      );
       return results as T;
     } catch (error) {
       this.logger.error(

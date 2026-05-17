@@ -65,4 +65,25 @@ export class WebSocketService {
     }
     return true;
   }
+
+  /**
+   * Check if the WebSocket Redis adapter is functioning.
+   * Returns true in single-server mode (no adapter needed) or if adapter is connected.
+   */
+  isAdapterHealthy = (): boolean => {
+    if (!this.gateway.server) return false;
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const adapter = this.gateway.server.adapter as any;
+    // If using Redis adapter, check pub/sub client status
+    if (adapter?.pubClient && adapter?.subClient) {
+      return (
+        adapter.pubClient.status === 'ready' &&
+        adapter.subClient.status === 'ready'
+      );
+    }
+
+    // In-memory adapter (single server) — always healthy
+    return true;
+  };
 }

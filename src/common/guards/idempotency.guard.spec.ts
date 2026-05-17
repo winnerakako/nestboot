@@ -84,7 +84,7 @@ describe('IdempotencyGuard', () => {
     response.json({ ok: true });
 
     expect(cache.set).toHaveBeenCalledWith(
-      'idempotency:POST:/payments:abc',
+      'idempotency:anon:POST:/payments:abc',
       { statusCode: 201, completed: true, body: { ok: true } },
       86400,
     );
@@ -103,7 +103,9 @@ describe('IdempotencyGuard', () => {
     await guard.canActivate(createContext(request, response));
     response.json({ success: false });
 
-    expect(cache.del).toHaveBeenCalledWith('idempotency:POST:/payments:abc');
+    expect(cache.del).toHaveBeenCalledWith(
+      'idempotency:anon:POST:/payments:abc',
+    );
     expect(cache.set).not.toHaveBeenCalled();
   });
 
@@ -173,6 +175,8 @@ describe('IdempotencyGuard', () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(cacheSet).toHaveBeenCalled();
-    expect(cacheDel).toHaveBeenCalledWith('idempotency:POST:/payments:abc');
+    expect(cacheDel).toHaveBeenCalledWith(
+      'idempotency:anon:POST:/payments:abc',
+    );
   });
 });

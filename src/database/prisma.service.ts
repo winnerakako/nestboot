@@ -19,10 +19,11 @@ export class PrismaService
 
   constructor() {
     const { connectionString, schema } = PrismaService.resolveDatabaseUrl();
+    const poolMax = parseInt(process.env.DATABASE_POOL_MAX || '10', 10);
 
     super({
       adapter: new PrismaPg(
-        { connectionString },
+        { connectionString, max: poolMax },
         schema ? { schema } : undefined,
       ),
       log: [{ emit: 'event', level: 'query' }],
@@ -94,14 +95,22 @@ export class PrismaService
    * Perform a soft delete — sets deletedAt instead of removing the record.
    * Works with any model that has a `deletedAt` field.
    *
+   * Pass a shared `Date` when soft-deleting multiple records in the same
+   * transaction to ensure consistent timestamps.
+   *
    * Example:
    *   await prisma.user.update({
    *     where: { id },
    *     data: prisma.softDelete(),
    *   });
+   *
+   *   // In a transaction with consistent timestamp:
+   *   const now = new Date();
+   *   await tx.user.update({ where: { id }, data: prisma.softDelete(now) });
+   *   await tx.post.updateMany({ where: { authorId: id }, data: prisma.softDelete(now) });
    */
-  softDelete() {
-    return { deletedAt: new Date() };
+  softDelete(timestamp?: Date) {
+    return { deletedAt: timestamp ?? new Date() };
   }
 
   // ─── Audit Trail Helpers ───────────────────────────────
