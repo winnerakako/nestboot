@@ -58,7 +58,11 @@ module.exports = {
         'An action must be runnable from a queue worker, so it cannot touch HTTP. ' +
         'FIX: take what you need as a field on the DTO — the actor travels on the DTO.',
       from: { path: '/actions/.+\\.action\\.ts$' },
-      to: { path: '(^@nestjs/platform-fastify|^fastify|^src/platform/http/)' },
+      // Same anchoring trap as above: the fastify patterns must match a
+      // resolved node_modules path, so only the src/ one may be anchored.
+      to: {
+        path: '(@nestjs[/+]platform-fastify|node_modules/(\\.pnpm/)?fastify@?|^src/platform/http/)',
+      },
     },
     {
       name: 'features-never-import-the-dbos-vendor',
@@ -67,7 +71,13 @@ module.exports = {
         'DBOS is wrapped in platform/dbos/ so it can be replaced. ' +
         'FIX: import { Workflow, Step, OpsMeta } from platform/dbos instead of @dbos-inc/dbos-sdk.',
       from: { path: '^src/features' },
-      to: { path: '^@dbos-inc/dbos-sdk' },
+      // NOT anchored, and tolerant of both layouts. An external dependency is
+      // reported by its RESOLVED path, which under pnpm is
+      // `node_modules/.pnpm/@dbos-inc+dbos-sdk@4.27.6/...` and under npm is
+      // `node_modules/@dbos-inc/dbos-sdk/...`. An anchored `^@dbos-inc/...`
+      // matches neither, so the rule silently never fires — which is worse than
+      // having no rule, because it looks like coverage.
+      to: { path: '@dbos-inc[/+]dbos-sdk' },
     },
     {
       name: 'no-circular',
