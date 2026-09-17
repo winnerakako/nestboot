@@ -1,0 +1,139 @@
+{{#if summary.length}}
+  <div class="actions" style="margin-bottom:12px">
+    {{#each summary}}
+      <span class="pill {{#if (eq this.outcome "blocked")}}bad{{else if (eq this.outcome "failure")}}warn{{/if}}">
+        {{this.kind}} · {{this.outcome}} {{number this.count}}
+      </span>
+    {{/each}}
+  </div>
+{{/if}}
+
+<section class="panel" style="margin-bottom:16px">
+  <h2>Rate-limit policies</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Group</th><th>Subject</th><th class="right">Limit</th><th class="right">Window</th><th>Action</th><th class="right">Priority</th><th>Note</th></tr></thead>
+    <tbody>
+      {{#each policies}}
+        <tr>
+          <td class="mono">{{this.routeGroup}}</td>
+          <td class="mono">{{this.subjectKind}}{{#if this.subjectId}}:{{this.subjectId}}{{/if}}</td>
+          <td class="right mono">{{this.maxRequests}}</td>
+          <td class="right mono">{{this.windowSeconds}}s</td>
+          {{!-- log_only is shadow mode: recorded, not enforced. --}}
+          <td><span class="pill {{#if (eq this.action "log_only")}}warn{{/if}}">{{this.action}}</span></td>
+          <td class="right mono muted">{{this.priority}}</td>
+          <td class="muted">{{truncate (coalesce this.note "—") 40}}</td>
+        </tr>
+      {{/each}}
+    </tbody>
+  </table>
+  </div>
+
+  <form method="post" action="{{opsPath}}/security/policies" style="padding:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:end;border-top:1px solid var(--border)">
+    <input type="hidden" name="_csrf" value="{{csrf}}">
+    <label><div class="muted" style="font-size:11px">Group</div><input type="text" name="routeGroup" value="api" size="8"></label>
+    <label><div class="muted" style="font-size:11px">Subject kind</div>
+      <select name="subjectKind"><option>*</option><option>ip</option><option>user</option><option>org</option><option>api_key</option></select>
+    </label>
+    <label><div class="muted" style="font-size:11px">Subject id</div><input type="text" name="subjectId" size="14" placeholder="(any)"></label>
+    <label><div class="muted" style="font-size:11px">Limit</div><input type="text" name="maxRequests" value="100" size="5"></label>
+    <label><div class="muted" style="font-size:11px">Window (s)</div><input type="text" name="windowSeconds" value="60" size="5"></label>
+    <label><div class="muted" style="font-size:11px">Action</div>
+      <select name="action"><option value="reject">reject</option><option value="log_only">log_only (shadow)</option></select>
+    </label>
+    <label><div class="muted" style="font-size:11px">Priority</div><input type="text" name="priority" value="0" size="4"></label>
+    <label style="flex:1"><div class="muted" style="font-size:11px">Note</div><input type="text" name="note" style="width:100%"></label>
+    <button type="submit" class="primary">Save policy</button>
+  </form>
+</section>
+
+<div class="split" style="grid-template-columns:1fr 1fr">
+  <section class="panel">
+    <h2>Top subjects · last 5 min</h2>
+    {{#if offenders.length}}
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Subject</th><th class="right">Requests</th><th></th></tr></thead>
+        <tbody>
+          {{#each offenders}}
+            <tr>
+              <td class="mono">{{this.kind}}:{{this.id}}</td>
+              <td class="right mono">{{number this.count}}</td>
+              <td class="right">
+                <form method="post" action="{{../opsPath}}/security/block"
+                      onsubmit="return confirm('Block {{this.kind}}:{{this.id}} for 60 minutes?')">
+                  <input type="hidden" name="_csrf" value="{{../csrf}}">
+                  <input type="hidden" name="subjectKind" value="{{this.kind}}">
+                  <input type="hidden" name="subjectId" value="{{this.id}}">
+                  <input type="hidden" name="minutes" value="60">
+                  <button type="submit" class="danger">Block 1h</button>
+                </form>
+              </td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+      </div>
+    {{else}}
+      <div class="empty">No traffic recorded in the last five minutes.</div>
+    {{/if}}
+  </section>
+
+  <section class="panel">
+    <h2>Active sessions</h2>
+    {{#if sessions.length}}
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Operator</th><th>From</th><th>Last seen</th><th>Expires</th></tr></thead>
+        <tbody>
+          {{#each sessions}}
+            <tr>
+              <td>{{this.username}}</td>
+              <td class="mono muted">{{coalesce this.ip "—"}}</td>
+              <td class="nowrap">{{ago this.lastSeenAt}}</td>
+              <td class="nowrap muted">{{ago this.expiresAt}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+      </div>
+      <div style="padding:10px;border-top:1px solid var(--border)">
+        <form method="post" action="{{opsPath}}/security/sessions/revoke-all"
+              onsubmit="return confirm('Sign out every operator, including you?')">
+          <input type="hidden" name="_csrf" value="{{csrf}}">
+          <button type="submit" class="danger">Revoke all sessions</button>
+        </form>
+      </div>
+    {{else}}
+      <div class="empty">No active sessions.</div>
+    {{/if}}
+  </section>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <h2>Security events · {{window}}</h2>
+  {{#if events.length}}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>When</th><th>Kind</th><th>Outcome</th><th>Subject</th><th>From</th><th>Detail</th></tr></thead>
+      <tbody>
+        {{#each events}}
+          <tr>
+            <td class="nowrap">{{ago this.ts}}</td>
+            <td class="mono">{{this.kind}}</td>
+            <td><span class="pill {{#if (eq this.outcome "success")}}good{{else if (eq this.outcome "would_block")}}warn{{else}}bad{{/if}}">{{this.outcome}}</span></td>
+            <td class="mono">{{coalesce this.subjectId "—"}}</td>
+            <td class="mono muted">{{coalesce this.ip "—"}}</td>
+            <td class="mono muted">{{truncate (jsonCompact this.detail) 60}}</td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    </div>
+  {{else if degraded}}
+    <div class="empty">Nothing can be listed while the view is incomplete.</div>
+  {{else}}
+    <div class="empty">No security events in this window.</div>
+  {{/if}}
+</section>

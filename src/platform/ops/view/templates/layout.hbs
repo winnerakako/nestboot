@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{title}} · {{appName}} ops</title>
+  <link rel="stylesheet" href="{{opsPath}}/assets/ops.css">
+  <script src="{{opsPath}}/assets/htmx.min.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="dot {{#if healthy}}good{{else}}bad{{/if}}"></span>
+    <strong>{{appName}}</strong>
+    <span class="muted mono">{{version}}</span>
+    <span class="role">{{role}}</span>
+  </div>
+
+  <nav class="tabs">
+    {{#each tabs}}
+      <a href="{{this.href}}" class="{{#if this.active}}active{{/if}}">
+        {{this.label}}{{#if this.badge}}<span class="badge">{{this.badge}}</span>{{/if}}
+      </a>
+    {{/each}}
+  </nav>
+
+  <form class="window" method="get" action="{{currentPath}}">
+    {{#each carry}}<input type="hidden" name="{{this.key}}" value="{{this.value}}">{{/each}}
+    <select name="window" onchange="this.form.submit()" aria-label="Time window">
+      {{#each windows}}
+        <option value="{{this}}" {{#if (eq this ../window)}}selected{{/if}}>{{this}}</option>
+      {{/each}}
+    </select>
+  </form>
+</header>
+
+{{#if degraded}}
+  <div class="banner warn">
+    {{!-- Never present an absence as a fact: say plainly that the view is incomplete. --}}
+    <strong>This view is incomplete.</strong> {{degraded}}
+  </div>
+{{/if}}
+
+<main>
+  {{{body}}}
+</main>
+
+<footer class="footer muted">
+  <span>{{appName}} · {{version}} · rendered {{renderedAt}}</span>
+  <span>uptime {{uptimeSeconds}}s</span>
+</footer>
+</body>
+</html>

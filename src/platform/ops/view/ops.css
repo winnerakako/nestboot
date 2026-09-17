@@ -1,0 +1,548 @@
+/* The operator console.
+ *
+ * Dense, monospaced where it matters, readable at 3am on a laptop in a dark
+ * room and on a projector in a bright one. No build step: this file is served
+ * as-is, because a console that needs a toolchain to restyle is a console
+ * nobody restyles.
+ */
+
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f6f7f9;
+  --bg-inset: #eceef1;
+  --fg: #16191d;
+  --fg-muted: #6b7280;
+  --border: #d9dde3;
+  --accent: #2563eb;
+  --good: #15803d;
+  --good-bg: #dcfce7;
+  --warn: #b45309;
+  --warn-bg: #fef3c7;
+  --bad: #b91c1c;
+  --bad-bg: #fee2e2;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --bg-soft: #161920;
+    --bg-inset: #1e222b;
+    --fg: #e6e8ec;
+    --fg-muted: #8b93a1;
+    --border: #272c36;
+    --accent: #60a5fa;
+    --good: #4ade80;
+    --good-bg: #052e16;
+    --warn: #fbbf24;
+    --warn-bg: #2d1c02;
+    --bad: #f87171;
+    --bad-bg: #331313;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px / 1.5 var(--sans);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+.mono,
+code,
+pre,
+td.mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.muted {
+  color: var(--fg-muted);
+}
+.good {
+  color: var(--good);
+}
+.warn {
+  color: var(--warn);
+}
+.bad {
+  color: var(--bad);
+}
+.right {
+  text-align: right;
+}
+.nowrap {
+  white-space: nowrap;
+}
+
+/* ---- top bar ------------------------------------------------------------ */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 16px;
+  height: 48px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand .role {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg-muted);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+}
+.dot.good {
+  background: var(--good);
+}
+.dot.bad {
+  background: var(--bad);
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  overflow-x: auto;
+}
+.tabs a {
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.tabs a:hover {
+  background: var(--bg-inset);
+  text-decoration: none;
+}
+.tabs a.active {
+  background: var(--bg-inset);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.badge {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--bad-bg);
+  color: var(--bad);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+select,
+input[type="text"],
+input[type="search"],
+input[type="password"],
+textarea {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+}
+input[type="search"],
+input[type="text"] {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+/* ---- layout ------------------------------------------------------------- */
+
+main {
+  padding: 16px;
+  max-width: 1600px;
+}
+
+.banner {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.banner.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.banner.bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.panel > h2 {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ---- the left rail: counts by route / feature / group ------------------- */
+
+.rail-switch {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.rail-switch a {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--fg-muted);
+}
+.rail-switch a.active {
+  background: var(--bg-inset);
+  color: var(--fg);
+}
+
+.rail {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.rail li a {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.rail li a:hover {
+  background: var(--bg-inset);
+  text-decoration: none;
+}
+.rail li a.active {
+  background: var(--accent);
+  color: #fff;
+}
+.rail .count {
+  color: var(--fg-muted);
+}
+.rail li a.active .count {
+  color: #fff;
+}
+
+/* ---- search ------------------------------------------------------------- */
+
+.searchbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.searchbar input[type="search"] {
+  flex: 1;
+}
+.searchbar .hint {
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  margin-top: 4px;
+}
+
+/* ---- tables ------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+thead th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-muted);
+  font-weight: 600;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 48px;
+  background: var(--bg-soft);
+}
+tbody td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+tbody tr:hover {
+  background: var(--bg-soft);
+}
+.table-wrap {
+  overflow-x: auto;
+}
+
+.pill {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--mono);
+  background: var(--bg-inset);
+  color: var(--fg-muted);
+}
+.pill.good {
+  background: var(--good-bg);
+  color: var(--good);
+}
+.pill.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.pill.bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+
+/* Log levels share the colour vocabulary with everything else. */
+.lvl-fatal,
+.lvl-error {
+  color: var(--bad);
+  font-weight: 600;
+}
+.lvl-warn {
+  color: var(--warn);
+}
+.lvl-info {
+  color: var(--fg);
+}
+.lvl-debug {
+  color: var(--fg-muted);
+}
+
+.spark {
+  font-family: var(--mono);
+  letter-spacing: -1px;
+  color: var(--accent);
+}
+
+/* ---- log timeline ------------------------------------------------------- */
+
+.logs {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.log-group {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 0;
+}
+.log-group > .head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 8px;
+  background: var(--bg-soft);
+  border-radius: 4px;
+}
+.log-line {
+  display: flex;
+  gap: 8px;
+  padding: 1px 8px 1px 24px;
+}
+.log-line:hover {
+  background: var(--bg-soft);
+}
+.log-line .ts {
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.log-line .msg {
+  flex: 1;
+  word-break: break-word;
+}
+.log-line .dup {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+details.ctx summary {
+  cursor: pointer;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+details.ctx pre {
+  margin: 4px 0 4px 24px;
+  padding: 8px;
+  background: var(--bg-inset);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+/* ---- workflow step list ------------------------------------------------- */
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.steps li {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.steps li.failed {
+  background: var(--bad-bg);
+}
+.steps .n {
+  color: var(--fg-muted);
+  font-family: var(--mono);
+}
+
+/* ---- actions ------------------------------------------------------------ */
+
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+button,
+.btn {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+button:hover,
+.btn:hover {
+  background: var(--bg-inset);
+  text-decoration: none;
+}
+button.danger {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+button.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--fg-muted);
+}
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  padding: 10px;
+}
+.kv dt {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.kv dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  word-break: break-all;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.stat {
+  padding: 12px;
+}
+.stat .n {
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--mono);
+}
+.stat .l {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-muted);
+}
+
+pre.payload {
+  margin: 0;
+  padding: 10px;
+  background: var(--bg-inset);
+  border-radius: 6px;
+  overflow-x: auto;
+  max-height: 340px;
+}

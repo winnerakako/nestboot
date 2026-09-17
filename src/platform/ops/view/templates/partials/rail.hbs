@@ -1,0 +1,20 @@
+<aside class="panel">
+  <div class="rail-switch">
+    {{#each railDimensions}}
+      <a href="{{this.href}}" class="{{#if this.active}}active{{/if}}">by {{this.label}}</a>
+    {{/each}}
+  </div>
+  {{#if railUnavailable}}
+    <div class="empty">Cannot read counts right now.<br><span class="muted">{{railUnavailable}}</span></div>
+  {{else}}
+    <ul class="rail">
+      {{#each rail}}
+        <li><a href="{{this.href}}" class="{{#if this.active}}active{{/if}}" title="{{this.value}}">
+          <span>{{truncate this.value 28}}</span><span class="count">{{number this.count}}</span>
+        </a></li>
+      {{else}}
+        <li><span class="muted" style="padding:6px 8px;display:block">Nothing in this window.</span></li>
+      {{/each}}
+    </ul>
+  {{/if}}
+</aside>

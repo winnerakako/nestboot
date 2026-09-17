@@ -1,0 +1,71 @@
+<div class="grid" style="margin-bottom:16px">
+  <div class="panel stat">
+    <div class="n {{#if (eq report.status "ok")}}good{{else}}bad{{/if}}">{{report.status}}</div>
+    <div class="l">Overall</div>
+  </div>
+  <div class="panel stat"><div class="n">{{#if report.ready}}ready{{else}}not ready{{/if}}</div><div class="l">Load balancer</div></div>
+  <div class="panel stat"><div class="n">{{report.role}}</div><div class="l">Role</div></div>
+  <div class="panel stat"><div class="n mono">{{duration (multiply report.uptimeSeconds 1000)}}</div><div class="l">Uptime</div></div>
+</div>
+
+<section class="panel" style="margin-bottom:16px">
+  <h2>Checks</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Check</th><th>Status</th><th>Detail</th><th class="right">Took</th><th>Data</th></tr></thead>
+    <tbody>
+      {{#each report.checks}}
+        <tr>
+          <td class="mono">{{this.name}}{{#if this.critical}} <span class="pill">critical</span>{{/if}}</td>
+          <td>
+            <span class="pill {{#if (eq this.status "ok")}}good{{else if (eq this.status "unknown")}}warn{{else}}bad{{/if}}">{{this.status}}</span>
+          </td>
+          {{!-- 'unknown' reads differently from 'ok': it means we could not look. --}}
+          <td class="muted">{{coalesce this.detail "—"}}</td>
+          <td class="right mono muted">{{duration this.durationMs}}</td>
+          <td class="mono muted">{{jsonCompact this.data}}</td>
+        </tr>
+      {{/each}}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="panel" style="margin-bottom:16px">
+  <h2>Telemetry writers</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Writer</th><th class="right">Buffered</th><th class="right">Written</th><th class="right">Dropped</th><th class="right">Failed</th><th>Last error</th></tr></thead>
+    <tbody>
+      {{#each writers}}
+        <tr>
+          <td class="mono">{{this.name}}</td>
+          {{#if this.disabled}}
+            <td class="muted" colspan="5">switched off</td>
+          {{else}}
+            <td class="right mono">{{number this.stats.buffered}}</td>
+            <td class="right mono">{{number this.stats.written}}</td>
+            <td class="right mono {{#if this.stats.dropped}}bad{{/if}}">{{number this.stats.dropped}}</td>
+            <td class="right mono {{#if this.stats.failed}}bad{{/if}}">{{number this.stats.failed}}</td>
+            <td class="muted mono">{{truncate (coalesce this.stats.lastError "—") 50}}</td>
+          {{/if}}
+        </tr>
+      {{/each}}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Resolved configuration</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Key</th><th>Value</th></tr></thead>
+    <tbody>
+      {{#each config}}
+        <tr><td class="mono muted">{{this.key}}</td><td class="mono">{{this.value}}</td></tr>
+      {{/each}}
+    </tbody>
+  </table>
+  </div>
+</section>

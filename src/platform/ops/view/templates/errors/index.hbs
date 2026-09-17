@@ -1,0 +1,37 @@
+{{> searchbar}}
+<div class="actions" style="margin-bottom:10px">
+  {{#each statusFilters}}
+    <a class="btn {{#if this.active}}primary{{/if}}" href="{{this.href}}">{{this.label}}</a>
+  {{/each}}
+</div>
+
+<div class="split">
+  {{> rail}}
+  <section class="panel">
+    <h2>Errors · {{window}}</h2>
+    {{#if groups.length}}
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Type</th><th>Message</th><th>Route</th><th class="right">Count</th><th>Last seen</th><th>Status</th></tr></thead>
+        <tbody>
+          {{#each groups}}
+            <tr>
+              <td><a href="{{../opsPath}}/errors/{{this.fingerprint}}" class="bad mono">{{this.type}}</a></td>
+              <td>{{truncate this.message 70}}</td>
+              <td class="mono muted">{{coalesce this.route "—"}}</td>
+              <td class="right mono">{{number this.occurrences}}</td>
+              <td class="nowrap">{{ago this.lastSeenAt}}</td>
+              <td><span class="pill {{#if (eq this.status "open")}}bad{{/if}}">{{this.status}}</span></td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+      </div>
+      {{> pager}}
+    {{else if degraded}}
+      <div class="empty">Nothing can be listed while the view is incomplete.</div>
+    {{else}}
+      {{> empty}}
+    {{/if}}
+  </section>
+</div>

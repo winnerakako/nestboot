@@ -1,0 +1,13 @@
+-- __DESCRIPTION__
+--
+-- Forward-only: there is no down(). A rollback that has run in production is a
+-- second, forward migration written with knowledge of what actually broke.
+--
+-- Add `-- nontransactional` on its own line above if this file uses
+-- CREATE INDEX CONCURRENTLY, which cannot run inside a transaction.
+-- Add `-- lock-timeout: 30s` to override the 5s default for a slow ALTER.
+
+-- Adding a column to an existing table? Expand, backfill, contract:
+--   1. ADD COLUMN ... (nullable, no volatile default — that rewrites the table)
+--   2. backfill in batches, from a workflow
+--   3. SET NOT NULL

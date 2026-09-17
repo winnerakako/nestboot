@@ -1,0 +1,8 @@
+<form class="searchbar" method="get" action="{{searchAction}}">
+  <input type="hidden" name="window" value="{{window}}">
+  {{#if by}}<input type="hidden" name="by" value="{{by}}">{{/if}}
+  <input type="search" name="q" value="{{q}}" placeholder="{{searchPlaceholder}}" autocomplete="off" spellcheck="false">
+  <button type="submit" class="primary">Search</button>
+  {{#if q}}<a class="btn" href="{{searchAction}}?window={{window}}">Clear</a>{{/if}}
+</form>
+<div class="hint muted">{{{searchHint}}}</div>

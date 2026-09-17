@@ -1,0 +1,33 @@
+name: nestboot
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nestboot
+      POSTGRES_PASSWORD: nestboot
+      POSTGRES_DB: app
+    ports:
+      # Not 5432: a developer almost always has another Postgres already bound
+      # there, and the resulting "database app does not exist" against the wrong
+      # server wastes an afternoon.
+      - '5443:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      # Partition pruning at plan time is what keeps the telemetry queries fast.
+      - -c
+      - enable_partition_pruning=on
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nestboot -d app']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:

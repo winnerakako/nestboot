@@ -1,0 +1,38 @@
+<section class="panel">
+  <h2>Operator sign-in</h2>
+  <form method="post" action="{{opsPath}}/auth/login" style="padding:16px;display:grid;gap:12px">
+    <input type="hidden" name="_csrf" value="{{csrf}}">
+
+    {{#if error}}<div class="banner bad" style="border-radius:6px">{{error}}</div>{{/if}}
+    {{#if notice}}<div class="banner warn" style="border-radius:6px">{{notice}}</div>{{/if}}
+
+    {{#if enrol}}
+      {{!-- Shown once, before the second factor is confirmed. --}}
+      <div>
+        <div class="muted" style="font-size:12px;margin-bottom:4px">Secret for your authenticator app</div>
+        <code class="mono" style="display:block;padding:8px;background:var(--bg-inset);border-radius:6px;word-break:break-all">{{enrol.secret}}</code>
+      </div>
+    {{/if}}
+
+    <label>
+      <div class="muted" style="font-size:12px">Username</div>
+      <input type="text" name="username" value="{{username}}" autocomplete="username"
+             autofocus required style="width:100%">
+    </label>
+
+    <label>
+      <div class="muted" style="font-size:12px">Password</div>
+      <input type="password" name="password" autocomplete="current-password" required style="width:100%">
+    </label>
+
+    {{#if (or needsTotp enrol)}}
+      <label>
+        <div class="muted" style="font-size:12px">Authenticator code</div>
+        <input type="text" name="totp" inputmode="numeric" pattern="[0-9 ]*" autocomplete="one-time-code"
+               placeholder="123456" required style="width:100%">
+      </label>
+    {{/if}}
+
+    <button type="submit" class="primary" style="padding:8px">Sign in</button>
+  </form>
+</section>

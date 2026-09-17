@@ -1,0 +1,70 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": ["**", "!**/dist", "!**/node_modules", "!**/coverage", "!**/*.sql"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    // Nest's @Body/@Param/@Inject are parameter decorators. Without this the
+    // parser rejects every controller in the app.
+    "parser": { "unsafeParameterDecoratorsEnabled": true },
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "all",
+      "semicolons": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        // Off, and it must stay off. Nest resolves constructor dependencies from
+        // the `design:paramtypes` metadata TypeScript emits, and that requires a
+        // VALUE import. Rewriting `import { HealthService }` to `import type`
+        // erases the class at runtime, and Nest then fails to inject it with an
+        // error that names the wrong thing.
+        "useImportType": "off",
+        "noNonNullAssertion": "off",
+        "useNamingConvention": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn",
+        // console.error survives: the pool error handler and the bootstrap
+        // failure path run when the logger may not exist yet.
+        "noConsole": { "level": "error", "options": { "allow": ["error"] } }
+      },
+      "complexity": { "noStaticOnlyClass": "off" },
+      "correctness": {
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error"
+      },
+      "performance": { "noNamespaceImport": "off" }
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": { "source": { "organizeImports": "on" } }
+  },
+  "overrides": [
+    {
+      // These write to a terminal a person is watching, before (or instead of)
+      // a logger existing: CLI commands, generators, and the bootstrap path.
+      "includes": [
+        "**/*.spec.ts",
+        "test/**",
+        "src/platform/console/**",
+        "src/platform/db/migrate.cli.ts",
+        "src/main.ts",
+        "scripts/**"
+      ],
+      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+    }
+  ]
+}

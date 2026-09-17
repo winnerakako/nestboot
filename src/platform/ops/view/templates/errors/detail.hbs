@@ -1,0 +1,59 @@
+<section class="panel" style="margin-bottom:12px">
+  <h2 class="bad">{{group.type}} <span class="pill">{{group.status}}</span></h2>
+  <dl class="kv">
+    <dt>Message</dt><dd>{{group.message}}</dd>
+    <dt>Route</dt><dd>{{coalesce group.route "—"}}</dd>
+    <dt>Occurrences</dt><dd>{{number group.occurrences}}</dd>
+    <dt>First seen</dt><dd>{{datetime group.firstSeenAt}} ({{ago group.firstSeenAt}})</dd>
+    <dt>Last seen</dt><dd>{{datetime group.lastSeenAt}} ({{ago group.lastSeenAt}})</dd>
+    {{#if group.resolvedBy}}<dt>Resolved by</dt><dd>{{group.resolvedBy}}</dd>{{/if}}
+    <dt>Fingerprint</dt><dd>{{group.fingerprint}}</dd>
+  </dl>
+  <div class="actions" style="padding:0 10px 10px">
+    {{#if (eq group.status "open")}}
+      <form method="post" action="{{opsPath}}/errors/{{group.fingerprint}}/resolve">
+        <input type="hidden" name="_csrf" value="{{csrf}}">
+        <button type="submit" class="primary">Resolve</button>
+      </form>
+      <form method="post" action="{{opsPath}}/errors/{{group.fingerprint}}/mute">
+        <input type="hidden" name="_csrf" value="{{csrf}}">
+        <button type="submit">Mute 24h</button>
+      </form>
+    {{else}}
+      <form method="post" action="{{opsPath}}/errors/{{group.fingerprint}}/reopen">
+        <input type="hidden" name="_csrf" value="{{csrf}}">
+        <button type="submit">Reopen</button>
+      </form>
+    {{/if}}
+    {{#if latest.requestId}}
+      <a class="btn" href="{{opsPath}}/logs?q=req:{{latest.requestId}}">Logs for the last occurrence</a>
+    {{/if}}
+  </div>
+</section>
+
+{{#if latest.stack}}
+  <section class="panel" style="margin-bottom:12px">
+    <h2>Stack · most recent</h2>
+    <pre class="payload">{{latest.stack}}</pre>
+  </section>
+{{/if}}
+
+<section class="panel">
+  <h2>Recent occurrences</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Route</th><th>Status</th><th>Request</th><th>Workflow</th></tr></thead>
+    <tbody>
+      {{#each occurrences}}
+        <tr>
+          <td class="nowrap">{{ago this.ts}}</td>
+          <td class="mono muted">{{coalesce this.route "—"}}</td>
+          <td><span class="pill {{statusClass this.status}}">{{coalesce this.status "—"}}</span></td>
+          <td class="mono">{{#if this.requestId}}<a href="{{../opsPath}}/logs?q=req:{{this.requestId}}">{{shortId this.requestId}}</a>{{else}}—{{/if}}</td>
+          <td class="mono">{{#if this.workflowId}}<a href="{{../opsPath}}/workflows/{{this.workflowId}}">{{shortId this.workflowId}}</a>{{else}}—{{/if}}</td>
+        </tr>
+      {{/each}}
+    </tbody>
+  </table>
+  </div>
+</section>

@@ -1,0 +1,50 @@
+{{> searchbar}}
+
+<div class="split">
+  {{> rail}}
+
+  <section class="panel">
+    <h2>Workflows · {{window}}</h2>
+    {{#if workflows.length}}
+      <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Status</th><th>Name</th><th>Group</th><th>Queue</th>
+            <th>Started</th><th class="right">Took</th><th>ID</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{#each workflows}}
+          <tr>
+            <td><span class="pill {{workflowStatusClass this.status}}">{{this.status}}</span></td>
+            <td>
+              <a href="{{../opsPath}}/workflows/{{this.workflowId}}">{{this.name}}</a>
+              {{#if this.kind}}<span class="muted mono"> {{this.kind}}</span>{{/if}}
+              {{#if this.recoveryAttempts}}
+                {{#if (gt this.recoveryAttempts 1)}}
+                  <span class="pill warn" title="recovered after a worker died">↻{{this.recoveryAttempts}}</span>
+                {{/if}}
+              {{/if}}
+            </td>
+            <td class="mono muted">{{coalesce this.group "—"}}</td>
+            <td class="mono muted">{{coalesce this.queueName "—"}}</td>
+            <td class="nowrap">{{ago this.createdAt}}</td>
+            <td class="right mono nowrap">
+              {{#if this.completedAt}}{{duration (subtractDates this.completedAt this.createdAt)}}{{else}}<span class="muted">running</span>{{/if}}
+            </td>
+            <td class="mono muted"><a href="{{../opsPath}}/workflows/{{this.workflowId}}">{{shortId this.workflowId}}</a></td>
+          </tr>
+        {{/each}}
+        </tbody>
+      </table>
+      </div>
+      {{> pager}}
+    {{else if degraded}}
+      {{!-- Degraded: say nothing about how many there are, because we do not know. --}}
+      <div class="empty">Nothing can be listed while the view is incomplete.</div>
+    {{else}}
+      {{> empty}}
+    {{/if}}
+  </section>
+</div>

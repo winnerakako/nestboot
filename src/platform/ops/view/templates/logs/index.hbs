@@ -1,0 +1,63 @@
+{{> searchbar}}
+
+{{#if levelCounts.length}}
+  <div class="actions" style="margin-bottom:10px">
+    {{#each levelCounts}}
+      <span class="pill {{levelClass this.level}}">{{levelName this.level}} {{number this.count}}</span>
+    {{/each}}
+  </div>
+{{/if}}
+
+<div class="split">
+  {{> rail}}
+
+  <section class="panel">
+    <h2>Logs · {{window}} · {{count}} lines</h2>
+    {{#if groups.length}}
+      <div class="logs" style="padding:8px">
+        {{#each groups}}
+          <div class="log-group">
+            <div class="head">
+              {{#if (eq this.kind "request")}}
+                <span class="pill {{statusClass this.status}}">{{coalesce this.status "—"}}</span>
+              {{else if (eq this.kind "workflow")}}
+                <span class="pill">workflow</span>
+              {{else}}
+                <span class="pill muted">—</span>
+              {{/if}}
+              {{#if this.href}}
+                <a href="{{this.href}}"><strong>{{this.label}}</strong></a>
+              {{else}}
+                <strong>{{this.label}}</strong>
+              {{/if}}
+              <span class="muted">{{ago this.startedAt}}</span>
+              <span class="muted mono">{{this.lines.length}} line{{#unless (eq this.lines.length 1)}}s{{/unless}}</span>
+            </div>
+
+            {{#each this.lines}}
+              <div class="log-line">
+                <span class="ts">{{datetime this.ts}}</span>
+                <span class="{{levelClass this.level}}">{{levelName this.level}}</span>
+                <span class="msg">
+                  {{this.msg}}
+                  {{#if (gt this.duplicates 1)}}<span class="dup">×{{this.duplicates}}</span>{{/if}}
+                </span>
+              </div>
+              {{#if this.ctx}}
+                <details class="ctx" style="padding-left:24px">
+                  <summary>context</summary>
+                  <pre>{{json this.ctx}}</pre>
+                </details>
+              {{/if}}
+            {{/each}}
+          </div>
+        {{/each}}
+      </div>
+      {{> pager}}
+    {{else if degraded}}
+      <div class="empty">Nothing can be listed while the view is incomplete.</div>
+    {{else}}
+      {{> empty}}
+    {{/if}}
+  </section>
+</div>

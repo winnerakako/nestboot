@@ -1,0 +1,70 @@
+{{> searchbar}}
+
+<div class="grid" style="margin-bottom:16px">
+  <div class="panel stat"><div class="n">{{number totalVolume}}</div><div class="l">Requests · {{window}}</div></div>
+  <div class="panel stat"><div class="n {{#if totalErrors}}bad{{/if}}">{{percent errorRate}}</div><div class="l">Error rate</div></div>
+  <div class="panel stat"><div class="n">{{routes.length}}</div><div class="l">Routes</div></div>
+</div>
+
+{{#if sampled}}
+  {{!-- Say it out loud: with sampling on, a naive count would understate reality. --}}
+  <div class="banner warn" style="border-radius:6px;margin-bottom:12px">
+    Sampling is on at {{sampleRate}}. Volume is estimated from the sample rate, not counted.
+    Errors and slow requests are always recorded in full.
+  </div>
+{{/if}}
+
+<div class="split">
+  {{> rail}}
+  <section class="panel" style="margin-bottom:16px">
+    <h2>By route</h2>
+    {{#if routes.length}}
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Route</th><th class="right">Volume</th><th class="right">Errors</th><th class="right">p50</th><th class="right">p95</th><th class="right">p99</th><th class="right">Max</th></tr></thead>
+        <tbody>
+          {{#each routes}}
+            <tr>
+              <td class="mono"><span class="pill">{{this.method}}</span> {{this.route}}</td>
+              <td class="right mono">{{number this.volume}}</td>
+              <td class="right mono {{#if this.errorRate}}bad{{/if}}">{{percent this.errorRate}}</td>
+              <td class="right mono">{{duration this.p50}}</td>
+              <td class="right mono">{{duration this.p95}}</td>
+              <td class="right mono">{{duration this.p99}}</td>
+              <td class="right mono muted">{{duration this.maxDurationMs}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+      </div>
+    {{else if degraded}}
+      <div class="empty">Nothing can be listed while the view is incomplete.</div>
+    {{else}}
+      {{> empty}}
+    {{/if}}
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Failed · always recorded, never sampled away</h2>
+  {{#if failed.length}}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>When</th><th>Route</th><th>Status</th><th class="right">Took</th><th>Request</th></tr></thead>
+      <tbody>
+        {{#each failed}}
+          <tr>
+            <td class="nowrap">{{ago this.ts}}</td>
+            <td class="mono"><span class="pill">{{this.method}}</span> {{this.route}}</td>
+            <td><span class="pill {{statusClass this.status}}">{{this.status}}</span></td>
+            <td class="right mono">{{duration this.durationMs}}</td>
+            <td class="mono">{{#if this.requestId}}<a href="{{../opsPath}}/logs?q=req:{{this.requestId}}">{{shortId this.requestId}}</a>{{else}}—{{/if}}</td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    </div>
+  {{else}}
+    <div class="empty">No failed requests in this window.</div>
+  {{/if}}
+</section>

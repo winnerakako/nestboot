@@ -1,0 +1,98 @@
+<div class="grid" style="margin-bottom:16px">
+  <div class="panel stat"><div class="n">{{number totalPending}}</div><div class="l">Waiting</div></div>
+  <div class="panel stat"><div class="n {{#if totalFailed}}bad{{/if}}">{{number totalFailed}}</div><div class="l">Failed · 24h</div></div>
+  <div class="panel stat"><div class="n">{{queues.length}}</div><div class="l">Queues</div></div>
+</div>
+
+{{#if groups.length}}
+<section class="panel" style="margin-bottom:16px">
+  <h2>By group</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Group</th><th class="right">Waiting</th><th class="right">Failed</th></tr></thead>
+    <tbody>
+      {{#each groups}}
+        <tr>
+          <td><a href="{{../opsPath}}/workflows?q=group:{{this.group}}">{{this.group}}</a></td>
+          <td class="right mono">{{number this.pending}}</td>
+          <td class="right mono {{#if this.failed}}bad{{/if}}">{{number this.failed}}</td>
+        </tr>
+      {{/each}}
+    </tbody>
+  </table>
+  </div>
+</section>
+{{/if}}
+
+<section class="panel" style="margin-bottom:16px">
+  <h2>Queues</h2>
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Queue</th><th class="right">Waiting</th><th class="right">Running</th>
+          <th class="right">Failed</th><th>Limits</th></tr>
+    </thead>
+    <tbody>
+      {{#each queues}}
+        <tr>
+          <td>
+            <a href="{{../opsPath}}/workflows?q=queue:{{this.name}}">{{this.name}}</a>
+            {{#if this.orphaned}}
+              <span class="pill warn" title="Rows exist on this queue but no code declares it — a deploy removed it while work was still enqueued.">undeclared</span>
+            {{/if}}
+          </td>
+          {{#if this.unknown}}
+            <td class="right muted" colspan="3">cannot read</td>
+          {{else}}
+            <td class="right mono">{{number this.pending}}</td>
+            <td class="right mono">{{number this.running}}</td>
+            <td class="right mono {{#if this.failed}}bad{{/if}}">{{number this.failed}}</td>
+          {{/if}}
+          <td class="muted mono">
+            {{#if this.workerConcurrency}}worker {{this.workerConcurrency}}{{/if}}
+            {{#if this.globalConcurrency}} · global {{this.globalConcurrency}}{{/if}}
+            {{#if this.rateLimit}} · {{this.rateLimit}}{{/if}}
+          </td>
+        </tr>
+      {{/each}}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Failed · last 24h</h2>
+  {{#if failed.length}}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Workflow</th><th>Queue</th><th>Failed</th><th>Error</th><th></th></tr></thead>
+      <tbody>
+        {{#each failed}}
+          <tr>
+            <td><a href="{{../opsPath}}/workflows/{{this.workflowId}}">{{this.name}}</a></td>
+            <td class="mono muted">{{coalesce this.queueName "—"}}</td>
+            <td class="nowrap">{{ago this.updatedAt}}</td>
+            <td class="mono bad">{{truncate (jsonCompact this.error) 70}}</td>
+            <td class="right">
+              <div class="actions">
+                {{!-- Resume, not re-enqueue: finished steps keep their results. --}}
+                <form method="post" action="{{../opsPath}}/queues/workflows/{{this.workflowId}}/retry">
+        <input type="hidden" name="_csrf" value="{{../csrf}}">
+                  <button type="submit">Retry</button>
+                </form>
+                <form method="post" action="{{../opsPath}}/queues/workflows/{{this.workflowId}}/cancel"
+                      onsubmit="return confirm('Cancel this workflow permanently?')">
+        <input type="hidden" name="_csrf" value="{{../csrf}}">
+                  <button type="submit" class="danger">Cancel</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    </div>
+  {{else}}
+    <div class="empty">Nothing has failed in the last 24 hours.</div>
+  {{/if}}
+</section>

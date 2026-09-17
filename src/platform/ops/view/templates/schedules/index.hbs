@@ -1,0 +1,65 @@
+<section class="panel">
+  <h2>Schedules · {{total}} total</h2>
+  {{#if groups.length}}
+    {{#each groups}}
+      <details {{#if this.stale}}open{{/if}}>
+        <summary style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border)">
+          <span class="dot {{this.health}}"></span>
+          <strong>{{this.group}}</strong>
+          <span class="muted">· {{this.count}} schedule{{#unless (eq this.count 1)}}s{{/unless}}</span>
+          {{#if this.lastRun}}<span class="muted">· last run {{ago this.lastRun}}</span>{{/if}}
+          {{#if this.paused}}<span class="pill">{{this.paused}} paused</span>{{/if}}
+          {{#if this.stale}}<span class="pill bad">{{this.stale}} stale</span>{{/if}}
+        </summary>
+        <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Cron</th><th>Queue</th><th>Last run</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {{#each this.schedules}}
+              <tr>
+                <td>
+                  {{this.name}}
+                  {{#if this.description}}<div class="muted">{{this.description}}</div>{{/if}}
+                </td>
+                <td class="mono">{{this.crontab}}{{#if this.timezone}} <span class="muted">{{this.timezone}}</span>{{/if}}</td>
+                <td class="mono muted">{{coalesce this.queueName "—"}}</td>
+                <td class="nowrap">
+                  {{#if this.lastFiredAt}}{{ago this.lastFiredAt}}
+                  {{else}}<span class="muted" title="Created but not yet due — not evidence of a problem.">never</span>{{/if}}
+                </td>
+                <td><span class="pill">{{this.status}}</span></td>
+                <td class="right">
+                  <div class="actions">
+                    <form method="post" action="{{../../opsPath}}/schedules/{{this.name}}/run">
+        <input type="hidden" name="_csrf" value="{{../../csrf}}">
+                      <button type="submit">Run now</button>
+                    </form>
+                    {{#if (eq this.status "PAUSED")}}
+                      <form method="post" action="{{../../opsPath}}/schedules/{{this.name}}/resume">
+        <input type="hidden" name="_csrf" value="{{../../csrf}}">
+                        <button type="submit" class="primary">Resume</button>
+                      </form>
+                    {{else}}
+                      <form method="post" action="{{../../opsPath}}/schedules/{{this.name}}/pause">
+        <input type="hidden" name="_csrf" value="{{../../csrf}}">
+                        <button type="submit">Pause</button>
+                      </form>
+                    {{/if}}
+                  </div>
+                </td>
+              </tr>
+            {{/each}}
+          </tbody>
+        </table>
+        </div>
+      </details>
+    {{/each}}
+  {{else}}
+    <div class="empty">
+      No schedules registered.
+      <div class="muted" style="margin-top:6px">Declare one with <code>defineSchedule()</code>; a worker registers it at boot.</div>
+    </div>
+  {{/if}}
+</section>

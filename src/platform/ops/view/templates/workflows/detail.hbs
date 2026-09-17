@@ -1,0 +1,73 @@
+<section class="panel" style="margin-bottom:12px">
+  <h2>{{workflow.name}} <span class="pill {{workflowStatusClass workflow.status}}">{{workflow.status}}</span></h2>
+  <dl class="kv">
+    <dt>ID</dt><dd>{{workflow.workflowId}}</dd>
+    <dt>Group</dt><dd>{{coalesce workflow.group "—"}} {{#if meta.description}}<span class="muted">· {{meta.description}}</span>{{/if}}</dd>
+    <dt>Queue</dt><dd>{{coalesce workflow.queueName "—"}}</dd>
+    <dt>Started</dt><dd>{{datetime workflow.createdAt}} ({{ago workflow.createdAt}})</dd>
+    {{#if workflow.completedAt}}<dt>Finished</dt><dd>{{datetime workflow.completedAt}}</dd>{{/if}}
+    {{#if workflow.requestId}}
+      <dt>Request</dt>
+      <dd><a href="{{opsPath}}/logs?q=req:{{workflow.requestId}}">{{workflow.requestId}}</a></dd>
+    {{/if}}
+    {{#if workflow.executorId}}<dt>Executor</dt><dd>{{workflow.executorId}}</dd>{{/if}}
+  </dl>
+
+  <div class="actions" style="padding:0 10px 10px">
+    {{#if canCancel}}
+      <form method="post" action="{{opsPath}}/workflows/{{workflow.workflowId}}/cancel"
+            onsubmit="return confirm('Cancel this workflow? In-flight steps finish; nothing after them runs.')">
+        <input type="hidden" name="_csrf" value="{{csrf}}">
+        <button type="submit" class="danger">Cancel</button>
+      </form>
+    {{/if}}
+    {{#if canResume}}
+      <form method="post" action="{{opsPath}}/workflows/{{workflow.workflowId}}/resume">
+        <input type="hidden" name="_csrf" value="{{csrf}}">
+        <button type="submit">Resume</button>
+      </form>
+    {{/if}}
+    <a class="btn" href="{{opsPath}}/logs?q=wf:{{workflow.workflowId}}">View logs</a>
+  </div>
+</section>
+
+{{#if workflow.error}}
+  <section class="panel" style="margin-bottom:12px">
+    <h2 class="bad">Error</h2>
+    <pre class="payload">{{json workflow.error}}</pre>
+  </section>
+{{/if}}
+
+<section class="panel">
+  <h2>Steps</h2>
+  {{#if steps.length}}
+    <ul class="steps">
+      {{#each steps}}
+        <li class="{{#if this.failed}}failed{{/if}}">
+          <span class="n">{{this.stepNumber}}</span>
+          <div>
+            <strong>{{this.name}}</strong>
+            {{#if this.error}}<div class="bad mono">{{this.error}}</div>{{/if}}
+            {{#if this.childWorkflowId}}
+              <div><a href="{{../opsPath}}/workflows/{{this.childWorkflowId}}">child workflow →</a></div>
+            {{/if}}
+            {{#if this.output}}
+              <details class="ctx"><summary>output</summary><pre>{{json this.output}}</pre></details>
+            {{/if}}
+          </div>
+          <div class="right muted nowrap">
+            {{#if this.completedAt}}{{ago this.completedAt}}{{/if}}
+            {{!-- Fork re-runs from here, keeping every checkpoint before it. --}}
+            <form method="post" action="{{../opsPath}}/workflows/{{../workflow.workflowId}}/fork?step={{this.stepNumber}}"
+                  onsubmit="return confirm('Re-run from step {{this.stepNumber}}? Earlier steps keep their results and will not run again.')">
+        <input type="hidden" name="_csrf" value="{{../csrf}}">
+              <button type="submit">Fork here</button>
+            </form>
+          </div>
+        </li>
+      {{/each}}
+    </ul>
+  {{else}}
+    <div class="empty">No steps recorded yet.</div>
+  {{/if}}
+</section>
